@@ -1,0 +1,9 @@
+- [ ] CameraX video capture
+- [ ] MediaPipe Pose integration
+- [ ] Frame sampling
+- [ ] Landmark smoothing
+- [ ] Bike calibration UI
+- [ ] Angle calculations
+- [ ] Pedal cycle detection
+- [ ] Fit rule engine
+- [ ] Overlay visualization
