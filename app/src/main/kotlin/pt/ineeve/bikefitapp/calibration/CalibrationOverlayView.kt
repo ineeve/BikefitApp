@@ -207,27 +207,101 @@ class CalibrationOverlayView @JvmOverloads constructor(
     private fun drawNextPointHint(canvas: Canvas) {
         val pointType = state.getCurrentPointType() ?: return
         
-        // Draw instruction hint based on expected point location
-        val hintPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = when (pointType) {
-                BikeReferencePointType.SADDLE_TOP -> COLOR_SADDLE
-                BikeReferencePointType.BOTTOM_BRACKET -> COLOR_BOTTOM_BRACKET
-                BikeReferencePointType.HANDLEBAR -> COLOR_HANDLEBAR
-            }
-            alpha = 100
+        val color = when (pointType) {
+            BikeReferencePointType.SADDLE_TOP -> COLOR_SADDLE
+            BikeReferencePointType.BOTTOM_BRACKET -> COLOR_BOTTOM_BRACKET
+            BikeReferencePointType.HANDLEBAR -> COLOR_HANDLEBAR
+        }
+        
+        // Draw a more visible pulsing target at expected position
+        val (hintX, hintY) = when (pointType) {
+            BikeReferencePointType.SADDLE_TOP -> Pair(0.3f, 0.3f)  // Upper left area
+            BikeReferencePointType.BOTTOM_BRACKET -> Pair(0.4f, 0.7f)  // Lower center
+            BikeReferencePointType.HANDLEBAR -> Pair(0.7f, 0.35f)  // Right side
+        }
+        
+        val centerX = hintX * width
+        val centerY = hintY * height
+        
+        // Draw target rings (outer to inner)
+        val targetPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = color
             style = Paint.Style.STROKE
             strokeWidth = 3f
         }
         
-        // Draw a subtle hint circle at expected position
-        val (hintX, hintY) = when (pointType) {
-            BikeReferencePointType.SADDLE_TOP -> Pair(0.3f, 0.3f)  // Upper left area
-            BikeReferencePointType.BOTTOM_BRACKET -> Pair(0.4f, 0.7f)  // Lower center
-            BikeReferencePointType.HANDLEBAR -> Pair(0.7f, 0.4f)  // Right side
+        // Outer ring
+        targetPaint.alpha = 80
+        canvas.drawCircle(centerX, centerY, 80f, targetPaint)
+        
+        // Middle ring  
+        targetPaint.alpha = 120
+        canvas.drawCircle(centerX, centerY, 50f, targetPaint)
+        
+        // Inner filled circle
+        val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = color
+            alpha = 60
+            style = Paint.Style.FILL
+        }
+        canvas.drawCircle(centerX, centerY, 30f, fillPaint)
+        
+        // Draw crosshair
+        targetPaint.alpha = 150
+        targetPaint.strokeWidth = 2f
+        canvas.drawLine(centerX - 90f, centerY, centerX - 35f, centerY, targetPaint)
+        canvas.drawLine(centerX + 35f, centerY, centerX + 90f, centerY, targetPaint)
+        canvas.drawLine(centerX, centerY - 90f, centerX, centerY - 35f, targetPaint)
+        canvas.drawLine(centerX, centerY + 35f, centerX, centerY + 90f, targetPaint)
+        
+        // Draw arrow pointing to target with label
+        drawTargetLabel(canvas, centerX, centerY, pointType, color)
+    }
+    
+    /**
+     * Draws a label with arrow pointing to the target area.
+     */
+    private fun drawTargetLabel(canvas: Canvas, targetX: Float, targetY: Float, 
+                                 pointType: BikeReferencePointType, color: Int) {
+        val label = when (pointType) {
+            BikeReferencePointType.SADDLE_TOP -> "👆 TAP HERE\nSaddle Top"
+            BikeReferencePointType.BOTTOM_BRACKET -> "👆 TAP HERE\nBottom Bracket"
+            BikeReferencePointType.HANDLEBAR -> "👆 TAP HERE\nHandlebar"
         }
         
-        // Animated pulse effect (simple version - just draw dashed circle)
-        canvas.drawCircle(hintX * width, hintY * height, 60f, hintPaint)
+        // Position label below the target
+        val labelY = targetY + 120f
+        
+        val labelBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = Color.argb(200, 0, 0, 0)
+        }
+        
+        val labelTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = 32f
+            this.color = color
+            textAlign = Paint.Align.CENTER
+            isFakeBoldText = true
+        }
+        
+        // Draw background
+        val lines = label.split("\n")
+        val lineHeight = 40f
+        val bgHeight = lines.size * lineHeight + 20f
+        val bgWidth = 200f
+        
+        canvas.drawRoundRect(
+            targetX - bgWidth / 2,
+            labelY - 10f,
+            targetX + bgWidth / 2,
+            labelY + bgHeight,
+            12f, 12f,
+            labelBgPaint
+        )
+        
+        // Draw text lines
+        lines.forEachIndexed { index, line ->
+            canvas.drawText(line, targetX, labelY + 30f + (index * lineHeight), labelTextPaint)
+        }
     }
 
     /**
