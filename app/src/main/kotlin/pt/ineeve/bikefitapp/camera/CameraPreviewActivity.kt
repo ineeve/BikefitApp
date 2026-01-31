@@ -11,10 +11,13 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import pt.ineeve.bikefitapp.R
+import pt.ineeve.bikefitapp.biomechanics.BodySide
+import pt.ineeve.bikefitapp.biomechanics.KneeAngleCalculator
 import pt.ineeve.bikefitapp.calibration.BikeCalibration
 import pt.ineeve.bikefitapp.pose.PoseLandmarkerWrapper
 import pt.ineeve.bikefitapp.pose.PoseResult
 import pt.ineeve.bikefitapp.pose.PoseLandmarkIndex
+import pt.ineeve.bikefitapp.ui.AngleDisplay
 import pt.ineeve.bikefitapp.ui.BikeOverlayView
 import pt.ineeve.bikefitapp.ui.PoseOverlayView
 import com.google.mediapipe.tasks.vision.core.RunningMode
@@ -211,9 +214,13 @@ class CameraPreviewActivity : AppCompatActivity() {
         val poseResult = poseLandmarkerWrapper?.detectPoseForVideo(bitmap, timestampMs)
             ?: PoseResult.EMPTY
         
+        // Calculate knee angles for display
+        val angleDisplays = calculateKneeAngles(poseResult)
+        
         // Update the pose overlay on the UI thread
         runOnUiThread {
             poseOverlay.updatePose(poseResult)
+            poseOverlay.updateAngles(angleDisplays)
         }
         
         // Log periodically to verify frames and pose detection
@@ -248,6 +255,49 @@ class CameraPreviewActivity : AppCompatActivity() {
                 "Hip: (${leftHip?.x?.format()}, ${leftHip?.y?.format()}) vis=${leftHip?.visibility?.format()}, " +
                 "Knee: (${leftKnee?.x?.format()}, ${leftKnee?.y?.format()}) vis=${leftKnee?.visibility?.format()}, " +
                 "Ankle: (${leftAnkle?.x?.format()}, ${leftAnkle?.y?.format()}) vis=${leftAnkle?.visibility?.format()}")
+    }
+    
+    /**
+     * Calculates knee angles from the pose result for display on the overlay.
+     * 
+     * Returns angle displays for both left and right knees if visible.
+     * The angles are positioned at the knee landmark locations.
+     * 
+     * @param poseResult The pose detection result
+     * @return List of valid angle displays
+     */
+    private fun calculateKneeAngles(poseResult: PoseResult): List<AngleDisplay> {
+        if (!poseResult.isValid) return emptyList()
+        
+        val angles = mutableListOf<AngleDisplay>()
+        
+        // Calculate left knee angle
+        val leftKneeResult = KneeAngleCalculator.calculateKneeAngle(poseResult, BodySide.LEFT)
+        if (leftKneeResult.isValid) {
+            angles.add(
+                AngleDisplay(
+                    angle = leftKneeResult.angle,
+                    landmarkIndex = PoseLandmarkIndex.LEFT_KNEE,
+                    isValid = true,
+                    label = "L"
+                )
+            )
+        }
+        
+        // Calculate right knee angle
+        val rightKneeResult = KneeAngleCalculator.calculateKneeAngle(poseResult, BodySide.RIGHT)
+        if (rightKneeResult.isValid) {
+            angles.add(
+                AngleDisplay(
+                    angle = rightKneeResult.angle,
+                    landmarkIndex = PoseLandmarkIndex.RIGHT_KNEE,
+                    isValid = true,
+                    label = "R"
+                )
+            )
+        }
+        
+        return angles
     }
     
     /**

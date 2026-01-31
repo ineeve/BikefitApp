@@ -5,11 +5,33 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PointF
+import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
 import pt.ineeve.bikefitapp.pose.Landmark
 import pt.ineeve.bikefitapp.pose.PoseLandmarkIndex
 import pt.ineeve.bikefitapp.pose.PoseResult
+
+/**
+ * Represents an angle to display on the overlay.
+ * 
+ * @param angle The angle value in degrees
+ * @param landmarkIndex The landmark index where the angle is centered (e.g., knee)
+ * @param isValid Whether the angle calculation was valid
+ * @param label Optional label for the angle (e.g., "L Knee", "R Knee")
+ */
+data class AngleDisplay(
+    val angle: Float,
+    val landmarkIndex: Int,
+    val isValid: Boolean = true,
+    val label: String = ""
+) {
+    companion object {
+        fun invalid(landmarkIndex: Int, label: String = ""): AngleDisplay {
+            return AngleDisplay(0f, landmarkIndex, false, label)
+        }
+    }
+}
 
 /**
  * Custom View that renders pose skeleton overlay on top of camera preview.
@@ -96,6 +118,29 @@ class PoseOverlayView @JvmOverloads constructor(
             invalidate()
         }
 
+    /** Whether to show angle values */
+    var showAngles: Boolean = true
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    /** Text size for angle display */
+    var angleTextSize: Float = DEFAULT_ANGLE_TEXT_SIZE
+        set(value) {
+            field = value
+            angleTextPaint.textSize = value
+            invalidate()
+        }
+
+    /** Color for angle text */
+    var angleTextColor: Int = DEFAULT_ANGLE_TEXT_COLOR
+        set(value) {
+            field = value
+            angleTextPaint.color = value
+            invalidate()
+        }
+
     // ==================== Paint Objects ====================
     
     private val landmarkPaint = Paint().apply {
@@ -117,6 +162,20 @@ class PoseOverlayView @JvmOverloads constructor(
         style = Paint.Style.FILL
         isAntiAlias = true
     }
+    
+    private val angleTextPaint = Paint().apply {
+        color = DEFAULT_ANGLE_TEXT_COLOR
+        textSize = DEFAULT_ANGLE_TEXT_SIZE
+        textAlign = Paint.Align.LEFT
+        isAntiAlias = true
+        isFakeBoldText = true
+    }
+    
+    private val angleBackgroundPaint = Paint().apply {
+        color = Color.argb(180, 0, 0, 0)
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
 
     // ==================== State ====================
     
@@ -126,6 +185,12 @@ class PoseOverlayView @JvmOverloads constructor(
     
     /** Cached transformed coordinates */
     private val transformedLandmarks = mutableMapOf<Int, PointF>()
+    
+    /** Angles to display on the overlay */
+    private val anglesToDisplay = mutableListOf<AngleDisplay>()
+    
+    /** Rect for drawing angle backgrounds */
+    private val angleRect = RectF()
 
     // ==================== Public API ====================
     
@@ -160,11 +225,43 @@ class PoseOverlayView @JvmOverloads constructor(
     }
     
     /**
+     * Updates the angles to display on the overlay.
+     * 
+     * Call this each frame with the calculated knee angles.
+     * Angles are displayed near their corresponding landmark positions.
+     * 
+     * @param angles List of angles to display
+     */
+    fun updateAngles(angles: List<AngleDisplay>) {
+        anglesToDisplay.clear()
+        anglesToDisplay.addAll(angles.filter { it.isValid })
+        invalidate()
+    }
+    
+    /**
+     * Updates a single angle to display.
+     * 
+     * @param angle The angle to display
+     */
+    fun updateAngle(angle: AngleDisplay) {
+        updateAngles(listOf(angle))
+    }
+    
+    /**
+     * Clears all displayed angles.
+     */
+    fun clearAngles() {
+        anglesToDisplay.clear()
+        invalidate()
+    }
+    
+    /**
      * Clears the current pose overlay.
      */
     fun clear() {
         currentPose = null
         transformedLandmarks.clear()
+        anglesToDisplay.clear()
         invalidate()
     }
     
@@ -189,6 +286,11 @@ class PoseOverlayView @JvmOverloads constructor(
         
         // Draw landmark points
         drawLandmarks(canvas, pose)
+        
+        // Draw angle values
+        if (showAngles) {
+            drawAngles(canvas)
+        }
     }
     
     /**
@@ -272,6 +374,56 @@ class PoseOverlayView @JvmOverloads constructor(
             canvas.drawCircle(point.x, point.y, landmarkRadius, paint)
         }
     }
+    
+    /**
+     * Draws angle values near their corresponding landmarks.
+     */
+    private fun drawAngles(canvas: Canvas) {
+        for (angleDisplay in anglesToDisplay) {
+            val point = transformedLandmarks[angleDisplay.landmarkIndex] ?: continue
+            drawAngleText(canvas, point, angleDisplay)
+        }
+    }
+    
+    /**
+     * Draws an angle value with background near the landmark position.
+     */
+    private fun drawAngleText(canvas: Canvas, position: PointF, angleDisplay: AngleDisplay) {
+        // Format angle text
+        val angleText = if (angleDisplay.label.isNotEmpty()) {
+            "${angleDisplay.label}: ${angleDisplay.angle.toInt()}°"
+        } else {
+            "${angleDisplay.angle.toInt()}°"
+        }
+        
+        // Measure text
+        val textWidth = angleTextPaint.measureText(angleText)
+        val textHeight = angleTextPaint.textSize
+        
+        // Position text offset from the landmark (to the right and slightly up)
+        val offsetX = ANGLE_TEXT_OFFSET_X
+        val offsetY = ANGLE_TEXT_OFFSET_Y
+        
+        val textX = position.x + offsetX
+        val textY = position.y + offsetY
+        
+        // Ensure text stays within view bounds
+        val adjustedX = textX.coerceIn(ANGLE_PADDING, width - textWidth - ANGLE_PADDING)
+        val adjustedY = textY.coerceIn(textHeight + ANGLE_PADDING, height - ANGLE_PADDING)
+        
+        // Draw background rectangle
+        val padding = ANGLE_PADDING
+        angleRect.set(
+            adjustedX - padding,
+            adjustedY - textHeight - padding / 2,
+            adjustedX + textWidth + padding,
+            adjustedY + padding
+        )
+        canvas.drawRoundRect(angleRect, ANGLE_CORNER_RADIUS, ANGLE_CORNER_RADIUS, angleBackgroundPaint)
+        
+        // Draw text
+        canvas.drawText(angleText, adjustedX, adjustedY, angleTextPaint)
+    }
 
     // ==================== Constants ====================
     
@@ -283,6 +435,14 @@ class PoseOverlayView @JvmOverloads constructor(
         private const val LOW_CONFIDENCE_COLOR = Color.YELLOW
         private const val DEFAULT_VISIBILITY_THRESHOLD = 0.5f
         private const val HIGH_CONFIDENCE_THRESHOLD = 0.7f
+        
+        // Angle display constants
+        private const val DEFAULT_ANGLE_TEXT_SIZE = 36f
+        private const val DEFAULT_ANGLE_TEXT_COLOR = Color.WHITE
+        private const val ANGLE_TEXT_OFFSET_X = 20f
+        private const val ANGLE_TEXT_OFFSET_Y = -15f
+        private const val ANGLE_PADDING = 8f
+        private const val ANGLE_CORNER_RADIUS = 6f
         
         /**
          * Skeleton connections for full body visualization.
