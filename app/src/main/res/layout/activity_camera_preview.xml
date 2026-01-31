@@ -44,6 +44,17 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- Real-time Cycle Metrics Overlay (positioned on the right side) -->
+    <pt.ineeve.bikefitapp.ui.CycleMetricsOverlayView
+        android:id="@+id/cycle_metrics_overlay"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="16dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/analysis_status"
+        app:layout_constraintEnd_toEndOf="parent" />
+
     <!-- Recording guidance overlay (positioned at bottom) -->
     <pt.ineeve.bikefitapp.ui.RecordingGuidanceView
         android:id="@+id/recording_guidance"

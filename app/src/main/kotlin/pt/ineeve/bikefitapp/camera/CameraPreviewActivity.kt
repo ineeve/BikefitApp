@@ -35,6 +35,11 @@ import pt.ineeve.bikefitapp.ui.PoseOverlayView
 import pt.ineeve.bikefitapp.ui.RecordingGuidanceView
 import pt.ineeve.bikefitapp.ui.StatusMessage
 import com.google.mediapipe.tasks.vision.core.RunningMode
+import android.view.View
+import pt.ineeve.bikefitapp.biomechanics.CycleAggregator
+import pt.ineeve.bikefitapp.biomechanics.PedalCycleDetector
+import pt.ineeve.bikefitapp.biomechanics.PedalExtremum
+import pt.ineeve.bikefitapp.ui.CycleMetricsOverlayView
 
 /**
  * Activity that displays the camera preview for bike fit analysis.
@@ -51,6 +56,7 @@ class CameraPreviewActivity : AppCompatActivity() {
     private lateinit var recordingGuidance: RecordingGuidanceView
     private lateinit var analysisStatus: AnalysisStatusView
     private lateinit var startButton: MaterialButton
+    private lateinit var cycleMetricsOverlay: CycleMetricsOverlayView
     private var poseLandmarkerWrapper: PoseLandmarkerWrapper? = null
     
     /** Current bike calibration to display on overlay */
@@ -58,6 +64,11 @@ class CameraPreviewActivity : AppCompatActivity() {
     
     /** Whether calibration has been completed */
     private var hasCalibration = false
+
+    // Real-time analysis components
+    private val pedalDetector = PedalCycleDetector()
+    private val leftCycleAggregator = CycleAggregator(BodySide.LEFT)
+    private val rightCycleAggregator = CycleAggregator(BodySide.RIGHT)
     
     /** Counter for logging frame analysis (debug purposes) */
     private var frameCount = 0L
@@ -84,6 +95,9 @@ class CameraPreviewActivity : AppCompatActivity() {
         
         /** Minimum visibility for key landmarks to be considered valid */
         private const val MIN_LANDMARK_VISIBILITY = 0.5f
+
+        /** Pose Estimation Frame Rate */
+        private const val POSE_ESTIMATION_FPS = 24f
         
         /** Temporary storage for passing calibration between activities.
          * In a production app, this would be handled via a repository or ViewModel. */
@@ -132,6 +146,7 @@ class CameraPreviewActivity : AppCompatActivity() {
         bikeOverlay = findViewById(R.id.bike_overlay)
         recordingGuidance = findViewById(R.id.recording_guidance)
         analysisStatus = findViewById(R.id.analysis_status)
+        cycleMetricsOverlay = findViewById(R.id.cycle_metrics_overlay)
         startButton = findViewById(R.id.start_button)
         cameraManager = CameraManager(this)
         
@@ -268,6 +283,7 @@ class CameraPreviewActivity : AppCompatActivity() {
             lifecycleOwner = this,
             previewView = previewView,
             frameAnalysisCallback = this::onFrameReceived,
+            targetFps = POSE_ESTIMATION_FPS,
             onError = { exception ->
                 Toast.makeText(
                     this,
@@ -308,8 +324,27 @@ class CameraPreviewActivity : AppCompatActivity() {
         runOnUiThread {
             poseOverlay.updatePose(poseResult)
             poseOverlay.updateAngles(angleDisplays)
+
+            // Show metrics overlay if calibration is complete
+            if (hasCalibration) {
+                cycleMetricsOverlay.visibility = View.VISIBLE
+                
+                // Update instantaneous knee angle (prioritize Right if visible, else Left)
+                // In a lateral view from the right side, right knee is visible
+                val displayAngle = angleDisplays.firstOrNull { it.label == "R" } 
+                    ?: angleDisplays.firstOrNull { it.label == "L" }
+                
+                if (displayAngle != null) {
+                    cycleMetricsOverlay.updateCurrentKneeAngle(displayAngle.angle)
+                }
+            } else {
+                cycleMetricsOverlay.visibility = View.GONE
+            }
         }
         
+        // Process cycle metrics
+        processRealTimeMetrics(poseResult, timestampMs, frameCount)
+
         // Log periodically to verify frames and pose detection
         if (frameCount % LOG_FRAME_INTERVAL == 0L) {
             Log.d(TAG, "Frame #$frameCount: ${bitmap.width}x${bitmap.height}, " +
@@ -350,6 +385,90 @@ class CameraPreviewActivity : AppCompatActivity() {
         
         // Recycle the bitmap to free memory
         bitmap.recycle()
+    }
+    
+    /**
+     * Processes pose data to detect pedal cycles and update metrics.
+     */
+    private fun processRealTimeMetrics(poseResult: PoseResult, timestampMs: Long, frameNumber: Long) {
+        if (!hasCalibration || !poseResult.isValid) return
+
+        // Process both sides
+        processSideMetrics(poseResult, BodySide.RIGHT, timestampMs, frameNumber)
+        processSideMetrics(poseResult, BodySide.LEFT, timestampMs, frameNumber)
+    }
+
+    private fun processSideMetrics(
+        poseResult: PoseResult, 
+        side: BodySide, 
+        timestampMs: Long, 
+        frameNumber: Long
+    ) {
+        val kneeIndex = if (side == BodySide.LEFT) PoseLandmarkIndex.LEFT_KNEE else PoseLandmarkIndex.RIGHT_KNEE
+        val ankleIndex = if (side == BodySide.LEFT) PoseLandmarkIndex.LEFT_ANKLE else PoseLandmarkIndex.RIGHT_ANKLE
+        
+        // Check visibility
+        val knee = poseResult.getLandmark(kneeIndex)
+        val ankle = poseResult.getLandmark(ankleIndex)
+        
+        if (knee == null || ankle == null || 
+            knee.visibility < MIN_LANDMARK_VISIBILITY || 
+            ankle.visibility < MIN_LANDMARK_VISIBILITY) {
+            return
+        }
+
+        // Calculate knee angle
+        val kneeResult = KneeAngleCalculator.calculateKneeAngle(poseResult, side)
+        val kneeAngle = if (kneeResult.isValid) kneeResult.angle else null
+
+        // Feed aggregator
+        val aggregator = if (side == BodySide.LEFT) leftCycleAggregator else rightCycleAggregator
+        aggregator.addMeasurement(
+            frameNumber = frameNumber,
+            timestampMs = timestampMs,
+            kneeAngle = kneeAngle
+        )
+
+        // Detect cycles via ankle position
+        // We use processAnklePosition directly since we already extracted ankle data
+        val events = pedalDetector.processAnklePosition(
+            frameNumber = frameNumber,
+            timestampMs = timestampMs,
+            ankleY = ankle.y,
+            visibility = ankle.visibility,
+            side = side
+        )
+
+        // Handle events
+        for (event in events) {
+            if (event.type == PedalExtremum.BDC) {
+                // Determine knee angle at BDC (Max Extension)
+                // Use current frame angle if available, or estimated
+                val angleAtBdc = kneeAngle ?: 0f // In real app, might want to look back in buffer
+                
+                // End cycle and get metrics
+                val cycleMetrics = aggregator.endCycleAtBdc(
+                    frameNumber = event.frameNumber,
+                    timestampMs = event.timestampMs,
+                    kneeAngle = angleAtBdc
+                )
+                
+                if (cycleMetrics != null) {
+                    // Update UI with latest complete cycle metrics
+                    // We only update if this side seems to be the active/calibrated one
+                    // or just update both (last writer wins, but usually one side is dominant in view)
+                    runOnUiThread {
+                        cycleMetricsOverlay.updateCycleMetrics(
+                            maxExtension = cycleMetrics.kneeAngleAtBdc ?: cycleMetrics.kneeAngle.max,
+                            minFlexion = cycleMetrics.kneeAngleAtTdc ?: cycleMetrics.kneeAngle.min
+                        )
+                    }
+                }
+            } else if (event.type == PedalExtremum.TDC) {
+                // Record TDC for the aggregator
+                aggregator.recordTdc(kneeAngle)
+            }
+        }
     }
     
     /**
