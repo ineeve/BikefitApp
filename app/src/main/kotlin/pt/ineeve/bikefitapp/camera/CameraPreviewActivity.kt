@@ -160,9 +160,9 @@ class CameraPreviewActivity : AppCompatActivity() {
         analysisStatus.onActionClickListener = { status ->
             when (status) {
                 AnalysisStatus.BAD_CALIBRATION -> {
-                    // TODO: Navigate to calibration screen
-                    Log.d(TAG, "Recalibrate action clicked")
+                    // Navigate to calibration screen
                     analysisStatus.hideStatus()
+                    navigateToCalibration()
                 }
                 else -> {
                     analysisStatus.hideStatus()
