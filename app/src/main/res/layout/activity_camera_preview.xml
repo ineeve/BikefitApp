@@ -34,6 +34,16 @@
         app:layout_constraintStart_toStartOf="@id/preview_view"
         app:layout_constraintEnd_toEndOf="@id/preview_view" />
 
+    <!-- Analysis status messages (positioned at top) -->
+    <pt.ineeve.bikefitapp.ui.AnalysisStatusView
+        android:id="@+id/analysis_status"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="48dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
     <!-- Recording guidance overlay (positioned at bottom) -->
     <pt.ineeve.bikefitapp.ui.RecordingGuidanceView
         android:id="@+id/recording_guidance"

@@ -14,13 +14,17 @@ import pt.ineeve.bikefitapp.R
 import pt.ineeve.bikefitapp.biomechanics.BodySide
 import pt.ineeve.bikefitapp.biomechanics.KneeAngleCalculator
 import pt.ineeve.bikefitapp.calibration.BikeCalibration
+import pt.ineeve.bikefitapp.calibration.CalibrationRepository
 import pt.ineeve.bikefitapp.pose.PoseLandmarkerWrapper
 import pt.ineeve.bikefitapp.pose.PoseResult
 import pt.ineeve.bikefitapp.pose.PoseLandmarkIndex
 import pt.ineeve.bikefitapp.ui.AngleDisplay
+import pt.ineeve.bikefitapp.ui.AnalysisStatus
+import pt.ineeve.bikefitapp.ui.AnalysisStatusView
 import pt.ineeve.bikefitapp.ui.BikeOverlayView
 import pt.ineeve.bikefitapp.ui.PoseOverlayView
 import pt.ineeve.bikefitapp.ui.RecordingGuidanceView
+import pt.ineeve.bikefitapp.ui.StatusMessage
 import com.google.mediapipe.tasks.vision.core.RunningMode
 
 /**
@@ -36,6 +40,7 @@ class CameraPreviewActivity : AppCompatActivity() {
     private lateinit var poseOverlay: PoseOverlayView
     private lateinit var bikeOverlay: BikeOverlayView
     private lateinit var recordingGuidance: RecordingGuidanceView
+    private lateinit var analysisStatus: AnalysisStatusView
     private var poseLandmarkerWrapper: PoseLandmarkerWrapper? = null
     
     /** Current bike calibration to display on overlay */
@@ -47,6 +52,12 @@ class CameraPreviewActivity : AppCompatActivity() {
     /** Counter for poses detected (debug purposes) */
     private var poseCount = 0L
     
+    /** Counter for consecutive frames without valid pose (for status messages) */
+    private var consecutiveInvalidFrames = 0
+    
+    /** Threshold for showing status messages */
+    private val INVALID_FRAME_THRESHOLD = 15
+    
     /** Whether using front camera (for mirroring overlay) */
     private var isFrontCamera = false
 
@@ -54,6 +65,12 @@ class CameraPreviewActivity : AppCompatActivity() {
         private const val TAG = "CameraPreviewActivity"
         /** Log every Nth frame to avoid log spam */
         private const val LOG_FRAME_INTERVAL = 30
+        
+        /** Threshold for showing "low confidence" warning */
+        private const val LOW_CONFIDENCE_THRESHOLD = 0.5f
+        
+        /** Minimum visibility for key landmarks to be considered valid */
+        private const val MIN_LANDMARK_VISIBILITY = 0.5f
         
         /** Temporary storage for passing calibration between activities.
          * In a production app, this would be handled via a repository or ViewModel. */
@@ -93,7 +110,11 @@ class CameraPreviewActivity : AppCompatActivity() {
         poseOverlay = findViewById(R.id.pose_overlay)
         bikeOverlay = findViewById(R.id.bike_overlay)
         recordingGuidance = findViewById(R.id.recording_guidance)
+        analysisStatus = findViewById(R.id.analysis_status)
         cameraManager = CameraManager(this)
+        
+        // Setup analysis status action callback
+        setupAnalysisStatusCallbacks()
         
         // Load bike calibration from intent if provided
         loadBikeCalibration()
@@ -105,6 +126,24 @@ class CameraPreviewActivity : AppCompatActivity() {
         startRecordingGuidance()
 
         checkCameraPermissionAndStart()
+    }
+    
+    /**
+     * Sets up callbacks for analysis status action buttons.
+     */
+    private fun setupAnalysisStatusCallbacks() {
+        analysisStatus.onActionClickListener = { status ->
+            when (status) {
+                AnalysisStatus.BAD_CALIBRATION -> {
+                    // TODO: Navigate to calibration screen
+                    Log.d(TAG, "Recalibrate action clicked")
+                    analysisStatus.hideStatus()
+                }
+                else -> {
+                    analysisStatus.hideStatus()
+                }
+            }
+        }
     }
     
     /**
@@ -254,7 +293,30 @@ class CameraPreviewActivity : AppCompatActivity() {
         
         if (poseResult.isValid) {
             poseCount++
-            // TODO: Pass poseResult to biomechanics analysis in future issues
+            consecutiveInvalidFrames = 0
+            
+            // Hide any status message if pose becomes valid
+            runOnUiThread {
+                if (analysisStatus.isStatusShowing()) {
+                    analysisStatus.hideStatus()
+                }
+            }
+            
+            // Check for low confidence
+            if (poseResult.confidence < LOW_CONFIDENCE_THRESHOLD) {
+                runOnUiThread {
+                    analysisStatus.showLowConfidence()
+                }
+            }
+        } else {
+            consecutiveInvalidFrames++
+            
+            // Show status message after threshold of invalid frames
+            if (consecutiveInvalidFrames == INVALID_FRAME_THRESHOLD) {
+                runOnUiThread {
+                    checkAndShowAnalysisStatus(poseResult)
+                }
+            }
         }
         
         // Recycle the bitmap to free memory
@@ -323,6 +385,52 @@ class CameraPreviewActivity : AppCompatActivity() {
      * Formats a float to 2 decimal places, or "null" if null.
      */
     private fun Float?.format(): String = this?.let { "%.2f".format(it) } ?: "null"
+
+    /**
+     * Analyzes the pose result and shows appropriate status message.
+     * 
+     * Checks various failure conditions in order of priority:
+     * 1. No calibration - prompts user to recalibrate
+     * 2. No person detected - no landmarks at all
+     * 3. Missing landmarks - some key landmarks not visible
+     * 4. Low confidence - landmarks visible but confidence too low
+     */
+    private fun checkAndShowAnalysisStatus(poseResult: PoseResult) {
+        // Check calibration first
+        if (!CalibrationRepository.hasValidCalibration()) {
+            analysisStatus.showStatus(StatusMessage.badCalibration())
+            return
+        }
+        
+        // Check if we have any landmarks at all
+        val landmarks = poseResult.landmarks
+        if (landmarks.isEmpty()) {
+            analysisStatus.showStatus(StatusMessage.noPersonDetected())
+            return
+        }
+        
+        // Check for missing key landmarks (hips, knees, ankles for bike fit)
+        val keyLandmarks = listOf(
+            PoseLandmarkIndex.LEFT_HIP,
+            PoseLandmarkIndex.RIGHT_HIP,
+            PoseLandmarkIndex.LEFT_KNEE,
+            PoseLandmarkIndex.RIGHT_KNEE,
+            PoseLandmarkIndex.LEFT_ANKLE,
+            PoseLandmarkIndex.RIGHT_ANKLE
+        )
+        
+        val visibleKeyLandmarks = keyLandmarks.count { index ->
+            landmarks.getOrNull(index)?.let { it.visibility >= MIN_LANDMARK_VISIBILITY } == true
+        }
+        
+        if (visibleKeyLandmarks < keyLandmarks.size / 2) {
+            analysisStatus.showStatus(StatusMessage.missingLandmarks())
+            return
+        }
+        
+        // Show low confidence warning
+        analysisStatus.showStatus(StatusMessage.lowConfidence())
+    }
 
     override fun onDestroy() {
         super.onDestroy()

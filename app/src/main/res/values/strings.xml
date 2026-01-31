@@ -32,4 +32,14 @@
     <string name="guidance_tip_start_pedaling">🔄 Start pedaling before we begin recording</string>
     <string name="guidance_tip_indicator">%1$d/%2$d</string>
     <string name="guidance_dismiss">Dismiss guidance</string>
+    
+    <!-- Analysis Status Messages -->
+    <string name="status_icon_description">Status icon</string>
+    <string name="status_low_confidence">Pose detection confidence is low. Try improving lighting or camera angle.</string>
+    <string name="status_missing_landmarks">Some body parts are not visible. Make sure your full side profile is in frame.</string>
+    <string name="status_bad_calibration">Bike calibration is incomplete or invalid. Please recalibrate.</string>
+    <string name="status_no_person">No person detected in frame. Position yourself in the camera view.</string>
+    <string name="status_error">An error occurred during analysis. Please try again.</string>
+    <string name="status_action_recalibrate">RECALIBRATE</string>
+    <string name="status_action_retry">RETRY</string>
 </resources>
