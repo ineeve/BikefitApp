@@ -544,6 +544,16 @@ class CameraPreviewActivity : AppCompatActivity() {
         FitSummaryActivity.start(this, summary)
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Restart camera preview when returning from another activity
+        // (e.g., CalibrationActivity which also uses the camera)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) 
+            == PackageManager.PERMISSION_GRANTED) {
+            startCameraPreview()
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         poseLandmarkerWrapper?.close()
