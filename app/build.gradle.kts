@@ -33,6 +33,15 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    
+    // MediaPipe native libraries are not yet 16KB aligned
+    // This is a known issue: https://github.com/google-ai-edge/mediapipe/issues/5292
+    // The app still works, but shows a warning on Android 15+ devices with 16KB page sizes
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
 }
 
 dependencies {
