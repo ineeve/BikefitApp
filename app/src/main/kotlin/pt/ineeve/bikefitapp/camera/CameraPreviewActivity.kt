@@ -11,9 +11,11 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import pt.ineeve.bikefitapp.R
+import pt.ineeve.bikefitapp.calibration.BikeCalibration
 import pt.ineeve.bikefitapp.pose.PoseLandmarkerWrapper
 import pt.ineeve.bikefitapp.pose.PoseResult
 import pt.ineeve.bikefitapp.pose.PoseLandmarkIndex
+import pt.ineeve.bikefitapp.ui.BikeOverlayView
 import pt.ineeve.bikefitapp.ui.PoseOverlayView
 import com.google.mediapipe.tasks.vision.core.RunningMode
 
@@ -28,7 +30,11 @@ class CameraPreviewActivity : AppCompatActivity() {
     private lateinit var cameraManager: CameraManager
     private lateinit var previewView: PreviewView
     private lateinit var poseOverlay: PoseOverlayView
+    private lateinit var bikeOverlay: BikeOverlayView
     private var poseLandmarkerWrapper: PoseLandmarkerWrapper? = null
+    
+    /** Current bike calibration to display on overlay */
+    private var bikeCalibration: BikeCalibration? = null
     
     /** Counter for logging frame analysis (debug purposes) */
     private var frameCount = 0L
@@ -43,6 +49,20 @@ class CameraPreviewActivity : AppCompatActivity() {
         private const val TAG = "CameraPreviewActivity"
         /** Log every Nth frame to avoid log spam */
         private const val LOG_FRAME_INTERVAL = 30
+        
+        /** Temporary storage for passing calibration between activities.
+         * In a production app, this would be handled via a repository or ViewModel. */
+        private var pendingCalibration: BikeCalibration? = null
+        
+        /**
+         * Sets the bike calibration to be displayed when the activity starts.
+         * Call this before starting CameraPreviewActivity.
+         * 
+         * @param calibration The bike calibration to display
+         */
+        fun setPendingCalibration(calibration: BikeCalibration?) {
+            pendingCalibration = calibration
+        }
     }
 
     private val requestPermissionLauncher = registerForActivityResult(
@@ -66,12 +86,40 @@ class CameraPreviewActivity : AppCompatActivity() {
 
         previewView = findViewById(R.id.preview_view)
         poseOverlay = findViewById(R.id.pose_overlay)
+        bikeOverlay = findViewById(R.id.bike_overlay)
         cameraManager = CameraManager(this)
+        
+        // Load bike calibration from intent if provided
+        loadBikeCalibration()
         
         // Initialize pose landmarker with VIDEO mode for sequential frame processing
         initializePoseLandmarker()
 
         checkCameraPermissionAndStart()
+    }
+    
+    /**
+     * Loads bike calibration from pending calibration if available.
+     */
+    private fun loadBikeCalibration() {
+        bikeCalibration = pendingCalibration
+        pendingCalibration = null // Clear after loading
+        
+        bikeCalibration?.let { calibration ->
+            Log.d(TAG, "Bike calibration loaded: ${calibration.pointCount}/3 points, complete=${calibration.isComplete}")
+            bikeOverlay.setCalibration(calibration)
+        }
+    }
+    
+    /**
+     * Updates the bike calibration displayed on the overlay.
+     * Can be called to update the calibration at runtime.
+     * 
+     * @param calibration The new bike calibration to display
+     */
+    fun updateBikeCalibration(calibration: BikeCalibration?) {
+        bikeCalibration = calibration
+        bikeOverlay.setCalibration(calibration)
     }
     
     /**
@@ -151,10 +199,11 @@ class CameraPreviewActivity : AppCompatActivity() {
     private fun onFrameReceived(bitmap: Bitmap, timestampMs: Long, rotationDegrees: Int) {
         frameCount++
         
-        // Set image source info on first frame
+        // Set image source info on first frame for both overlays
         if (frameCount == 1L) {
             runOnUiThread {
                 poseOverlay.setImageSourceInfo(bitmap.width, bitmap.height, isFrontCamera)
+                bikeOverlay.setImageSourceInfo(bitmap.width, bitmap.height, isFrontCamera)
             }
         }
         

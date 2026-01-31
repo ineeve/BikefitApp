@@ -14,6 +14,17 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- Bike reference points overlay (below pose overlay) -->
+    <pt.ineeve.bikefitapp.ui.BikeOverlayView
+        android:id="@+id/bike_overlay"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toTopOf="@id/preview_view"
+        app:layout_constraintBottom_toBottomOf="@id/preview_view"
+        app:layout_constraintStart_toStartOf="@id/preview_view"
+        app:layout_constraintEnd_toEndOf="@id/preview_view" />
+
+    <!-- Pose skeleton overlay (on top of bike overlay) -->
     <pt.ineeve.bikefitapp.ui.PoseOverlayView
         android:id="@+id/pose_overlay"
         android:layout_width="0dp"
