@@ -172,6 +172,9 @@ class CalibrationActivity : AppCompatActivity() {
 
         Log.d(TAG, "Calibration confirmed: $calibration")
 
+        // Store calibration in repository for access from analysis flow
+        CalibrationRepository.setCalibration(calibration)
+
         state = CalibrationState.Confirmed(calibration)
         updateUI()
 
