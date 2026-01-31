@@ -25,6 +25,7 @@ class CameraManager(private val context: Context) {
     private var imageAnalysis: ImageAnalysis? = null
     private var cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private var frameCallback: FrameAnalysisCallback? = null
+    private val frameSampler = FrameSampler()
 
     companion object {
         private const val TAG = "CameraManager"
@@ -40,6 +41,7 @@ class CameraManager(private val context: Context) {
      * @param previewView The PreviewView to display the camera feed
      * @param cameraSelector Which camera to use (default: back camera)
      * @param frameAnalysisCallback Optional callback to receive frames for analysis
+     * @param targetFps Target frames per second for analysis (default: 10 FPS)
      * @param onError Callback for error handling
      */
     fun startCamera(
@@ -47,9 +49,12 @@ class CameraManager(private val context: Context) {
         previewView: PreviewView,
         cameraSelector: CameraSelector = DEFAULT_CAMERA_SELECTOR,
         frameAnalysisCallback: FrameAnalysisCallback? = null,
+        targetFps: Float = FrameSampler.DEFAULT_TARGET_FPS,
         onError: ((Exception) -> Unit)? = null
     ) {
         this.frameCallback = frameAnalysisCallback
+        frameSampler.setTargetFps(targetFps)
+        frameSampler.reset()
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
 
         cameraProviderFuture.addListener({
@@ -71,6 +76,15 @@ class CameraManager(private val context: Context) {
      */
     fun setFrameAnalysisCallback(callback: FrameAnalysisCallback?) {
         this.frameCallback = callback
+    }
+
+    /**
+     * Sets the target FPS for frame analysis.
+     * 
+     * @param fps Target frames per second (clamped to 1-60 FPS)
+     */
+    fun setTargetFps(fps: Float) {
+        frameSampler.setTargetFps(fps)
     }
 
     /**
@@ -123,17 +137,21 @@ class CameraManager(private val context: Context) {
 
     /**
      * Processes a single frame from the camera.
-     * Converts ImageProxy to Bitmap and invokes the callback on background thread.
+     * Applies frame sampling and converts ImageProxy to Bitmap.
+     * Invokes the callback on background thread only for sampled frames.
      */
     private fun processFrame(imageProxy: androidx.camera.core.ImageProxy) {
         try {
             val callback = frameCallback
             if (callback != null) {
-                val rotationDegrees = imageProxy.imageInfo.rotationDegrees
                 val timestampMs = imageProxy.imageInfo.timestamp / 1_000_000 // Convert ns to ms
                 
-                val bitmap = ImageProxyConverter.toBitmap(imageProxy, rotationDegrees)
-                callback.onFrameAvailable(bitmap, timestampMs, rotationDegrees)
+                // Apply frame sampling - skip frames that are too close together
+                if (frameSampler.shouldProcessFrame(timestampMs)) {
+                    val rotationDegrees = imageProxy.imageInfo.rotationDegrees
+                    val bitmap = ImageProxyConverter.toBitmap(imageProxy, rotationDegrees)
+                    callback.onFrameAvailable(bitmap, timestampMs, rotationDegrees)
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error processing frame", e)
