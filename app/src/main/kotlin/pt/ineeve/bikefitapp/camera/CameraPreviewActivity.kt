@@ -14,6 +14,7 @@ import pt.ineeve.bikefitapp.R
 import pt.ineeve.bikefitapp.pose.PoseLandmarkerWrapper
 import pt.ineeve.bikefitapp.pose.PoseResult
 import pt.ineeve.bikefitapp.pose.PoseLandmarkIndex
+import pt.ineeve.bikefitapp.ui.PoseOverlayView
 import com.google.mediapipe.tasks.vision.core.RunningMode
 
 /**
@@ -26,6 +27,7 @@ class CameraPreviewActivity : AppCompatActivity() {
 
     private lateinit var cameraManager: CameraManager
     private lateinit var previewView: PreviewView
+    private lateinit var poseOverlay: PoseOverlayView
     private var poseLandmarkerWrapper: PoseLandmarkerWrapper? = null
     
     /** Counter for logging frame analysis (debug purposes) */
@@ -33,6 +35,9 @@ class CameraPreviewActivity : AppCompatActivity() {
     
     /** Counter for poses detected (debug purposes) */
     private var poseCount = 0L
+    
+    /** Whether using front camera (for mirroring overlay) */
+    private var isFrontCamera = false
 
     companion object {
         private const val TAG = "CameraPreviewActivity"
@@ -60,6 +65,7 @@ class CameraPreviewActivity : AppCompatActivity() {
         setContentView(R.layout.activity_camera_preview)
 
         previewView = findViewById(R.id.preview_view)
+        poseOverlay = findViewById(R.id.pose_overlay)
         cameraManager = CameraManager(this)
         
         // Initialize pose landmarker with VIDEO mode for sequential frame processing
@@ -145,9 +151,21 @@ class CameraPreviewActivity : AppCompatActivity() {
     private fun onFrameReceived(bitmap: Bitmap, timestampMs: Long, rotationDegrees: Int) {
         frameCount++
         
+        // Set image source info on first frame
+        if (frameCount == 1L) {
+            runOnUiThread {
+                poseOverlay.setImageSourceInfo(bitmap.width, bitmap.height, isFrontCamera)
+            }
+        }
+        
         // Run pose detection on the frame
         val poseResult = poseLandmarkerWrapper?.detectPoseForVideo(bitmap, timestampMs)
             ?: PoseResult.EMPTY
+        
+        // Update the pose overlay on the UI thread
+        runOnUiThread {
+            poseOverlay.updatePose(poseResult)
+        }
         
         // Log periodically to verify frames and pose detection
         if (frameCount % LOG_FRAME_INTERVAL == 0L) {
