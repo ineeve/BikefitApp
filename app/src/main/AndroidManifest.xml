@@ -26,6 +26,13 @@
             </intent-filter>
         </activity>
         
+        <activity
+            android:name=".calibration.CalibrationActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize"
+            android:label="Bike Calibration" />
+        
     </application>
 
 </manifest>

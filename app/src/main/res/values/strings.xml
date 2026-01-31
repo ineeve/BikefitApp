@@ -5,4 +5,14 @@
     <string name="camera_permission_denied">Camera permission is required for bike fit analysis</string>
     <string name="camera_permission_rationale">This app needs camera access to analyze your bike fit position</string>
     <string name="camera_error">Camera error: %1$s</string>
+    
+    <!-- Calibration -->
+    <string name="calibration_instruction_saddle">Tap the top of the saddle</string>
+    <string name="calibration_instruction_bb">Tap the center of the bottom bracket</string>
+    <string name="calibration_instruction_handlebar">Tap the handlebar grip</string>
+    <string name="calibration_instruction_confirm">Review and confirm calibration</string>
+    <string name="calibration_confirm">Confirm</string>
+    <string name="calibration_reset">Reset</string>
+    <string name="calibration_incomplete">Please mark all three reference points</string>
+    <string name="calibration_success">Calibration complete!</string>
 </resources>

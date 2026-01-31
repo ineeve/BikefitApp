@@ -11,6 +11,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import pt.ineeve.bikefitapp.R
+import pt.ineeve.bikefitapp.pose.PoseLandmarkerWrapper
+import pt.ineeve.bikefitapp.pose.PoseResult
+import pt.ineeve.bikefitapp.pose.PoseLandmarkIndex
+import com.google.mediapipe.tasks.vision.core.RunningMode
 
 /**
  * Activity that displays the camera preview for bike fit analysis.
@@ -22,9 +26,13 @@ class CameraPreviewActivity : AppCompatActivity() {
 
     private lateinit var cameraManager: CameraManager
     private lateinit var previewView: PreviewView
+    private var poseLandmarkerWrapper: PoseLandmarkerWrapper? = null
     
     /** Counter for logging frame analysis (debug purposes) */
     private var frameCount = 0L
+    
+    /** Counter for poses detected (debug purposes) */
+    private var poseCount = 0L
 
     companion object {
         private const val TAG = "CameraPreviewActivity"
@@ -53,8 +61,33 @@ class CameraPreviewActivity : AppCompatActivity() {
 
         previewView = findViewById(R.id.preview_view)
         cameraManager = CameraManager(this)
+        
+        // Initialize pose landmarker with VIDEO mode for sequential frame processing
+        initializePoseLandmarker()
 
         checkCameraPermissionAndStart()
+    }
+    
+    /**
+     * Initializes the MediaPipe Pose Landmarker.
+     */
+    private fun initializePoseLandmarker() {
+        poseLandmarkerWrapper = PoseLandmarkerWrapper(
+            context = this,
+            runningMode = RunningMode.VIDEO
+        )
+        
+        if (!poseLandmarkerWrapper!!.isReady()) {
+            val error = poseLandmarkerWrapper!!.getInitializationError()
+            Log.e(TAG, "Failed to initialize PoseLandmarker", error)
+            Toast.makeText(
+                this,
+                "Pose detection unavailable: ${error?.message}",
+                Toast.LENGTH_LONG
+            ).show()
+        } else {
+            Log.d(TAG, "PoseLandmarker initialized successfully")
+        }
     }
 
     /**
@@ -112,19 +145,53 @@ class CameraPreviewActivity : AppCompatActivity() {
     private fun onFrameReceived(bitmap: Bitmap, timestampMs: Long, rotationDegrees: Int) {
         frameCount++
         
-        // Log periodically to verify frames are being received
+        // Run pose detection on the frame
+        val poseResult = poseLandmarkerWrapper?.detectPoseForVideo(bitmap, timestampMs)
+            ?: PoseResult.EMPTY
+        
+        // Log periodically to verify frames and pose detection
         if (frameCount % LOG_FRAME_INTERVAL == 0L) {
-            Log.d(TAG, "Frame #$frameCount received: ${bitmap.width}x${bitmap.height}, " +
-                    "timestamp=$timestampMs ms, rotation=$rotationDegrees°")
+            Log.d(TAG, "Frame #$frameCount: ${bitmap.width}x${bitmap.height}, " +
+                    "timestamp=$timestampMs ms, pose_valid=${poseResult.isValid}")
+            
+            if (poseResult.isValid) {
+                logPoseLandmarks(poseResult)
+            }
         }
         
-        // TODO: Pass bitmap to pose estimation in future issues
-        // For now, just recycle the bitmap to free memory
+        if (poseResult.isValid) {
+            poseCount++
+            // TODO: Pass poseResult to biomechanics analysis in future issues
+        }
+        
+        // Recycle the bitmap to free memory
         bitmap.recycle()
     }
+    
+    /**
+     * Logs key pose landmarks for debugging.
+     */
+    private fun logPoseLandmarks(result: PoseResult) {
+        val leftHip = result.getLandmark(PoseLandmarkIndex.LEFT_HIP)
+        val leftKnee = result.getLandmark(PoseLandmarkIndex.LEFT_KNEE)
+        val leftAnkle = result.getLandmark(PoseLandmarkIndex.LEFT_ANKLE)
+        val leftShoulder = result.getLandmark(PoseLandmarkIndex.LEFT_SHOULDER)
+        
+        Log.d(TAG, "Pose landmarks - " +
+                "Hip: (${leftHip?.x?.format()}, ${leftHip?.y?.format()}) vis=${leftHip?.visibility?.format()}, " +
+                "Knee: (${leftKnee?.x?.format()}, ${leftKnee?.y?.format()}) vis=${leftKnee?.visibility?.format()}, " +
+                "Ankle: (${leftAnkle?.x?.format()}, ${leftAnkle?.y?.format()}) vis=${leftAnkle?.visibility?.format()}")
+    }
+    
+    /**
+     * Formats a float to 2 decimal places, or "null" if null.
+     */
+    private fun Float?.format(): String = this?.let { "%.2f".format(it) } ?: "null"
 
     override fun onDestroy() {
         super.onDestroy()
+        poseLandmarkerWrapper?.close()
+        poseLandmarkerWrapper = null
         cameraManager.shutdown()
     }
 }
