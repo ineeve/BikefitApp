@@ -8,6 +8,7 @@ import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
+import androidx.camera.core.UseCase
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
@@ -59,6 +60,11 @@ class CameraManager(private val context: Context) {
         targetFps: Float = FrameSampler.DEFAULT_TARGET_FPS,
         onError: ((Exception) -> Unit)? = null
     ) {
+        // Ensure executor is available (recreate if previously shutdown)
+        if (cameraExecutor.isShutdown) {
+            cameraExecutor = Executors.newSingleThreadExecutor()
+        }
+        
         this.frameCallback = frameAnalysisCallback
         frameSampler.setTargetFps(targetFps)
         frameSampler.reset()
@@ -228,7 +234,13 @@ class CameraManager(private val context: Context) {
      * Called automatically when the lifecycle is destroyed, but can be called manually.
      */
     fun stopCamera() {
-        cameraProvider?.unbindAll()
+        val useCases = mutableListOf<UseCase>()
+        preview?.let { useCases.add(it) }
+        imageAnalysis?.let { useCases.add(it) }
+
+        if (useCases.isNotEmpty()) {
+            cameraProvider?.unbind(*useCases.toTypedArray())
+        }
         Log.d(TAG, "Camera stopped")
     }
 

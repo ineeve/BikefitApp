@@ -105,7 +105,8 @@ class CalibrationActivity : AppCompatActivity() {
                 this,
                 Manifest.permission.CAMERA
             ) == PackageManager.PERMISSION_GRANTED -> {
-                startCameraPreview()
+                // Camera will be started in onResume
+                Log.d(TAG, "Camera permission already granted")
             }
             shouldShowRequestPermissionRationale(Manifest.permission.CAMERA) -> {
                 Toast.makeText(
@@ -255,6 +256,14 @@ class CalibrationActivity : AppCompatActivity() {
             View.VISIBLE
         }
         resetButton.isEnabled = calibration.pointCount > 0
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) 
+            == PackageManager.PERMISSION_GRANTED) {
+            startCameraPreview()
+        }
     }
 
     override fun onPause() {

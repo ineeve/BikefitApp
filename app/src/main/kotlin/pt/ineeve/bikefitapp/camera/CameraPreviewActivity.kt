@@ -239,7 +239,8 @@ class CameraPreviewActivity : AppCompatActivity() {
                 this,
                 Manifest.permission.CAMERA
             ) == PackageManager.PERMISSION_GRANTED -> {
-                startCameraPreview()
+                // Camera will be started in onResume
+                Log.d(TAG, "Camera permission already granted")
             }
             shouldShowRequestPermissionRationale(Manifest.permission.CAMERA) -> {
                 // Show explanation to the user, then request permission
@@ -260,6 +261,9 @@ class CameraPreviewActivity : AppCompatActivity() {
      * Starts the camera preview after permission is granted.
      */
     private fun startCameraPreview() {
+        // Reset frame count so image source info is set again for overlays
+        frameCount = 0L
+        
         cameraManager.startCamera(
             lifecycleOwner = this,
             previewView = previewView,
