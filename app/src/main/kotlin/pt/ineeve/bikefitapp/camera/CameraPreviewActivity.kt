@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
@@ -58,6 +60,7 @@ class CameraPreviewActivity : AppCompatActivity() {
     private lateinit var startButton: MaterialButton
     private lateinit var cycleMetricsOverlay: CycleMetricsOverlayView
     private var poseLandmarkerWrapper: PoseLandmarkerWrapper? = null
+    private var toneGenerator: ToneGenerator? = null
     
     /** Current bike calibration to display on overlay */
     private var bikeCalibration: BikeCalibration? = null
@@ -71,7 +74,8 @@ class CameraPreviewActivity : AppCompatActivity() {
     private val rightCycleAggregator = CycleAggregator(BodySide.RIGHT)
     
     // Data collection thresholds
-    private val MIN_CYCLES_FOR_ANALYSIS = 5
+    // Use 10 half-cycles (5 full revs) to ensure solid data and ignore mounting
+    private val MIN_CYCLES_FOR_ANALYSIS = 10
     private var isAnalysisReadyToastShown = false
     
     /** Counter for logging frame analysis (debug purposes) */
@@ -154,6 +158,13 @@ class CameraPreviewActivity : AppCompatActivity() {
         startButton = findViewById(R.id.start_button)
         cameraManager = CameraManager(this)
         
+        // Initialize tone generator for audio feedback
+        try {
+            toneGenerator = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize ToneGenerator", e)
+        }
+
         // Setup button click listener
         setupStartButton()
         
@@ -480,6 +491,9 @@ class CameraPreviewActivity : AppCompatActivity() {
                             startButton.text = getString(R.string.analysis_ready)
                             startButton.setBackgroundColor(ContextCompat.getColor(this@CameraPreviewActivity, R.color.analysis_ready_green))
                             
+                            // Audio feedback
+                            toneGenerator?.startTone(ToneGenerator.TONE_PROP_PROMPT)
+
                             Toast.makeText(
                                 this@CameraPreviewActivity,
                                 getString(R.string.data_collection_complete_msg),
@@ -724,6 +738,8 @@ class CameraPreviewActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        toneGenerator?.release()
+        toneGenerator = null
         poseLandmarkerWrapper?.close()
         poseLandmarkerWrapper = null
         cameraManager.shutdown()

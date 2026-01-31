@@ -249,8 +249,16 @@ class CycleAggregator(
 
         // 1. Validate Duration
         val duration = endTimestamp - currentMeasurements.startTimestampMs
-        if (duration < MIN_CYCLE_DURATION_MS || duration > MAX_CYCLE_DURATION_MS) {
-            return null // Discard cycle
+        if (duration < MIN_CYCLE_DURATION_MS) {
+            return null // Discard short noise
+        }
+        
+        // If the gap is too long, it's not a continuous cycle. 
+        // We reset the history because the user stopped pedaling.
+        if (duration > MAX_CYCLE_DURATION_MS) {
+            completedCycles.clear()
+            cycleNumber = 0
+            return null
         }
 
         val kneeStats = AngleStats.fromValues(currentMeasurements.kneeAngles)
@@ -297,8 +305,8 @@ class CycleAggregator(
         private const val MIN_CYCLE_DURATION_MS = 300L
         // 10 RPM min (6000ms) - Filters standing still/pauses
         private const val MAX_CYCLE_DURATION_MS = 6000L
-        // Minimum 15 degrees movement to count as a pedal stroke
-        private const val MIN_KNEE_ROM_DEGREES = 15.0f
+        // Minimum 40 degrees movement to count as a pedal stroke
+        private const val MIN_KNEE_ROM_DEGREES = 40.0f
 
         /**
          * Aggregates a list of CycleMetrics into a CycleSummary.
