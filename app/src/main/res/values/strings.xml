@@ -48,4 +48,5 @@
     <string name="analyze_fit">Analyze Fit</string>
     <string name="calibration_required">Please calibrate bike first</string>
     <string name="analysis_complete">Analysis complete</string>
+    <string name="calibration_complete_start_pedaling">✓ Calibration complete! Get on your bike and start pedaling, then tap Analyze Fit</string>
 </resources>

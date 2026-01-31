@@ -505,6 +505,17 @@ class CameraPreviewActivity : AppCompatActivity() {
             bikeCalibration = calibration
             bikeOverlay.setCalibration(calibration)
             updateStartButton()
+            
+            // Hide any calibration warning that was showing
+            analysisStatus.hideStatus()
+            
+            // Show guidance for next step
+            Toast.makeText(
+                this,
+                getString(R.string.calibration_complete_start_pedaling),
+                Toast.LENGTH_LONG
+            ).show()
+            
             Log.d(TAG, "Calibration loaded: ${calibration.pointCount} points")
         }
     }
