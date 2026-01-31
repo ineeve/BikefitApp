@@ -243,9 +243,22 @@ class CycleAggregator(
     /**
      * Finalizes the current cycle and adds it to completed cycles.
      */
-    private fun finalizeCycle(endFrame: Long, endTimestamp: Long): CycleMetrics {
+    private fun finalizeCycle(endFrame: Long, endTimestamp: Long): CycleMetrics? {
         currentMeasurements.endFrameNumber = endFrame
         currentMeasurements.endTimestampMs = endTimestamp
+
+        // 1. Validate Duration
+        val duration = endTimestamp - currentMeasurements.startTimestampMs
+        if (duration < MIN_CYCLE_DURATION_MS || duration > MAX_CYCLE_DURATION_MS) {
+            return null // Discard cycle
+        }
+
+        val kneeStats = AngleStats.fromValues(currentMeasurements.kneeAngles)
+
+        // 2. Validate Range of Motion (prevents accepting standing still jitters)
+        if (kneeStats.range < MIN_KNEE_ROM_DEGREES) {
+            return null // Discard cycle
+        }
 
         val metrics = CycleMetrics(
             cycleNumber = cycleNumber,
@@ -253,7 +266,7 @@ class CycleAggregator(
             endFrameNumber = currentMeasurements.endFrameNumber,
             startTimestampMs = currentMeasurements.startTimestampMs,
             endTimestampMs = currentMeasurements.endTimestampMs,
-            kneeAngle = AngleStats.fromValues(currentMeasurements.kneeAngles),
+            kneeAngle = kneeStats,
             hipAngle = AngleStats.fromValues(currentMeasurements.hipAngles),
             torsoAngle = AngleStats.fromValues(currentMeasurements.torsoAngles),
             kneeAngleAtBdc = currentMeasurements.kneeAngleAtBdc,
@@ -279,6 +292,14 @@ class CycleAggregator(
     }
 
     companion object {
+        // Validation constants
+        // 200 RPM max (300ms) - Filters noise/twitches
+        private const val MIN_CYCLE_DURATION_MS = 300L
+        // 10 RPM min (6000ms) - Filters standing still/pauses
+        private const val MAX_CYCLE_DURATION_MS = 6000L
+        // Minimum 15 degrees movement to count as a pedal stroke
+        private const val MIN_KNEE_ROM_DEGREES = 15.0f
+
         /**
          * Aggregates a list of CycleMetrics into a CycleSummary.
          * 

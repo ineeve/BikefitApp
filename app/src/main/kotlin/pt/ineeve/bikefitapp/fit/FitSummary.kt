@@ -1,5 +1,7 @@
 package pt.ineeve.bikefitapp.fit
 
+import pt.ineeve.bikefitapp.biomechanics.CycleSummary
+
 /**
  * Represents a category of bike fit issues for grouping in UI.
  */
@@ -148,7 +150,8 @@ data class FitSummary(
     val totalIssueCount: Int,
     val highSeverityCount: Int,
     val cycleCount: Int,
-    val analysisTimestampMs: Long
+    val analysisTimestampMs: Long,
+    val cycleSummary: CycleSummary? = null
 ) {
     /**
      * Returns true if no issues were found.
@@ -225,7 +228,8 @@ data class FitSummary(
                 totalIssueCount = sortedIssues.size,
                 highSeverityCount = highSeverityCount,
                 cycleCount = result.cycleCount,
-                analysisTimestampMs = result.analysisTimestampMs
+                analysisTimestampMs = result.analysisTimestampMs,
+                cycleSummary = result.cycleSummary
             )
         }
 

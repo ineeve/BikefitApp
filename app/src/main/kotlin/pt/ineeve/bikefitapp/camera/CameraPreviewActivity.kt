@@ -70,6 +70,10 @@ class CameraPreviewActivity : AppCompatActivity() {
     private val leftCycleAggregator = CycleAggregator(BodySide.LEFT)
     private val rightCycleAggregator = CycleAggregator(BodySide.RIGHT)
     
+    // Data collection thresholds
+    private val MIN_CYCLES_FOR_ANALYSIS = 5
+    private var isAnalysisReadyToastShown = false
+    
     /** Counter for logging frame analysis (debug purposes) */
     private var frameCount = 0L
     
@@ -458,10 +462,30 @@ class CameraPreviewActivity : AppCompatActivity() {
                     // We only update if this side seems to be the active/calibrated one
                     // or just update both (last writer wins, but usually one side is dominant in view)
                     runOnUiThread {
+                        val cyclesLeft = leftCycleAggregator.getCycleCount()
+                        val cyclesRight = rightCycleAggregator.getCycleCount()
+                        val totalCycles = cyclesLeft + cyclesRight
+                        
                         cycleMetricsOverlay.updateCycleMetrics(
                             maxExtension = cycleMetrics.kneeAngleAtBdc ?: cycleMetrics.kneeAngle.max,
                             minFlexion = cycleMetrics.kneeAngleAtTdc ?: cycleMetrics.kneeAngle.min
                         )
+                        
+                        // Check if we have enough cycles for analysis
+                        if (totalCycles >= MIN_CYCLES_FOR_ANALYSIS && !isAnalysisReadyToastShown) {
+                            isAnalysisReadyToastShown = true
+                            
+                            // Visual feedback
+                            startButton.setIconResource(R.drawable.ic_check_circle)
+                            startButton.text = getString(R.string.analysis_ready)
+                            startButton.setBackgroundColor(ContextCompat.getColor(this@CameraPreviewActivity, R.color.analysis_ready_green))
+                            
+                            Toast.makeText(
+                                this@CameraPreviewActivity,
+                                getString(R.string.data_collection_complete_msg),
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
                     }
                 }
             } else if (event.type == PedalExtremum.TDC) {
@@ -653,14 +677,28 @@ class CameraPreviewActivity : AppCompatActivity() {
             return
         }
         
-        // Create minimal analysis input (for MVP, we use placeholder data)
-        // In a full implementation, this would use actual collected cycle data
+        // Get summary from the side with the most data
+        val leftSummary = leftCycleAggregator.getSummary()
+        val rightSummary = rightCycleAggregator.getSummary()
+        
+        val cycleSummary = if (leftSummary.cycleCount >= rightSummary.cycleCount) {
+            leftSummary
+        } else {
+            rightSummary
+        }
+        
+        // Ensure we have enough data
+        if (!cycleSummary.isValid) {
+             Toast.makeText(this, "Not enough data collected yet. Keep pedaling!", Toast.LENGTH_SHORT).show()
+             return
+        }
+
         val input = FitAnalysisInput(
-            cycleSummary = CycleSummary.invalid(),
+            cycleSummary = cycleSummary,
             bikeCalibration = calibration
         )
         
-        val engine = FitEngine.default()
+        val engine = FitEngine()
         val result = engine.analyze(input)
         val summary = FitSummary.fromAnalysisResult(result)
         

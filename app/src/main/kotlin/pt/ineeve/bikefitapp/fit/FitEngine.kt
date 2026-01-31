@@ -119,7 +119,8 @@ class FitEngine(
         if (!input.hasMinimumData(config.minCyclesForAnalysis)) {
             return FitAnalysisResult(
                 issues = emptyList(),
-                cycleCount = input.cycleSummary.cycleCount
+                cycleCount = input.cycleSummary.cycleCount,
+                cycleSummary = input.cycleSummary
             )
         }
 
@@ -150,7 +151,8 @@ class FitEngine(
 
         return FitAnalysisResult(
             issues = sortedIssues,
-            cycleCount = input.cycleSummary.cycleCount
+            cycleCount = input.cycleSummary.cycleCount,
+            cycleSummary = input.cycleSummary
         )
     }
 

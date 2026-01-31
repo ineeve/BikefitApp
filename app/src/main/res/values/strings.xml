@@ -15,6 +15,8 @@
     <string name="calibration_reset">Reset</string>
     <string name="calibration_incomplete">Please mark all three reference points</string>
     <string name="calibration_success">Calibration complete!</string>
+    <string name="analysis_ready">Analysis Ready</string>
+    <string name="data_collection_complete_msg">Collected enough data! Tap \'Analysis Ready\' to see results.</string>
     
     <!-- Fit Analysis -->
     <string name="fit_analysis_title">Bike Fit Analysis</string>

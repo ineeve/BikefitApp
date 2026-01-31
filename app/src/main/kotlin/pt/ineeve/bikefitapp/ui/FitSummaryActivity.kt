@@ -44,6 +44,17 @@ class FitSummaryActivity : AppCompatActivity() {
     private lateinit var recommendationsRecycler: RecyclerView
     private lateinit var emptyState: View
 
+    // Metrics table views
+    private lateinit var metricsCard: MaterialCardView
+    private lateinit var metricExtensionValue: TextView
+    private lateinit var metricExtensionRange: TextView
+    private lateinit var metricFlexionValue: TextView
+    private lateinit var metricFlexionRange: TextView
+    private lateinit var metricKopsValue: TextView
+    private lateinit var metricKopsRange: TextView
+    private lateinit var metricShoulderValue: TextView
+    private lateinit var metricShoulderRange: TextView
+
     private lateinit var adapter: FitRecommendationAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -66,9 +77,31 @@ class FitSummaryActivity : AppCompatActivity() {
         gradeText = findViewById(R.id.grade_text)
         gradeSummary = findViewById(R.id.grade_summary)
         issueCount = findViewById(R.id.issue_count)
+        
+        // Metrics Views
+        metricsCard = findViewById(R.id.metrics_card)
+        metricExtensionValue = findViewById(R.id.metric_extension_value)
+        metricExtensionRange = findViewById(R.id.metric_extension_range)
+        metricFlexionValue = findViewById(R.id.metric_flexion_value)
+        metricFlexionRange = findViewById(R.id.metric_flexion_range)
+        metricKopsValue = findViewById(R.id.metric_kops_value)
+        metricKopsRange = findViewById(R.id.metric_kops_range)
+        metricShoulderValue = findViewById(R.id.metric_shoulder_value)
+        metricShoulderRange = findViewById(R.id.metric_shoulder_range)
+
         recommendationsHeader = findViewById(R.id.recommendations_header)
         recommendationsRecycler = findViewById(R.id.recommendations_recycler)
         emptyState = findViewById(R.id.empty_state)
+        
+        metricsCard = findViewById(R.id.metrics_card)
+        metricExtensionValue = findViewById(R.id.metric_extension_value)
+        metricExtensionRange = findViewById(R.id.metric_extension_range)
+        metricFlexionValue = findViewById(R.id.metric_flexion_value)
+        metricFlexionRange = findViewById(R.id.metric_flexion_range)
+        metricKopsValue = findViewById(R.id.metric_kops_value)
+        metricKopsRange = findViewById(R.id.metric_kops_range)
+        metricShoulderValue = findViewById(R.id.metric_shoulder_value)
+        metricShoulderRange = findViewById(R.id.metric_shoulder_range)
     }
 
     private fun setupToolbar() {
@@ -100,12 +133,41 @@ class FitSummaryActivity : AppCompatActivity() {
         // Display issue count
         displayIssueCount(summary)
         
+        // Display metrics table
+        displayMetrics(summary)
+        
         // Display recommendations
         if (summary.recommendations.isEmpty()) {
             showEmptyState()
         } else {
             showRecommendations(summary)
         }
+    }
+
+    private fun displayMetrics(summary: FitSummary) {
+        val metrics = summary.cycleSummary ?: return
+        
+        // Extension (Knee Angle at BDC)
+        val extValue = metrics.averageKneeAngleAtBdc
+        metricExtensionValue.text = extValue?.let { "%.1f°".format(it) } ?: "--"
+        metricExtensionRange.text = "25° - 35°" // Based on SaddleHeightRule defaults
+        
+        // Flexion (Knee Angle at TDC)
+        val flexValue = metrics.averageKneeAngleAtTdc
+        metricFlexionValue.text = flexValue?.let { "%.1f°".format(it) } ?: "--"
+        metricFlexionRange.text = "70° - 110°"
+        
+        // KOPS
+        // We don't have KOPS in cycle summary yet.
+        metricKopsValue.text = "--"
+        metricKopsRange.text = "±10mm"
+        
+        // Shoulder (Torso Angle)
+        val shoulderValue = metrics.averageTorsoAngle
+        metricShoulderValue.text = "%.1f°".format(shoulderValue)
+        metricShoulderRange.text = "30° - 60°"
+        
+        metricsCard.visibility = View.VISIBLE
     }
 
     /**

@@ -1,5 +1,7 @@
 package pt.ineeve.bikefitapp.fit
 
+import pt.ineeve.bikefitapp.biomechanics.CycleSummary
+
 /**
  * Severity levels for bike fit issues.
  * 
@@ -242,11 +244,13 @@ data class FitIssue(
  * @param issues List of detected fit issues
  * @param analysisTimestampMs When the analysis was performed
  * @param cycleCount Number of pedal cycles analyzed
+ * @param cycleSummary The raw biomechanics data used for analysis
  */
 data class FitAnalysisResult(
     val issues: List<FitIssue>,
     val analysisTimestampMs: Long = System.currentTimeMillis(),
-    val cycleCount: Int = 0
+    val cycleCount: Int = 0,
+    val cycleSummary: CycleSummary? = null
 ) {
     /**
      * Returns the highest severity issue, or null if no issues.
