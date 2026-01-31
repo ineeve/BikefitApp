@@ -3,6 +3,7 @@ package pt.ineeve.bikefitapp.camera
 import android.content.Context
 import android.util.Log
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -15,13 +16,15 @@ import java.util.concurrent.Executors
  * Manages CameraX camera operations including preview setup and lifecycle binding.
  * 
  * This class encapsulates all CameraX operations to provide a clean interface
- * for displaying camera preview in the app.
+ * for displaying camera preview and analyzing frames in the app.
  */
 class CameraManager(private val context: Context) {
 
     private var cameraProvider: ProcessCameraProvider? = null
     private var preview: Preview? = null
+    private var imageAnalysis: ImageAnalysis? = null
     private var cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private var frameCallback: FrameAnalysisCallback? = null
 
     companion object {
         private const val TAG = "CameraManager"
@@ -36,20 +39,23 @@ class CameraManager(private val context: Context) {
      * @param lifecycleOwner The lifecycle owner to bind the camera to
      * @param previewView The PreviewView to display the camera feed
      * @param cameraSelector Which camera to use (default: back camera)
+     * @param frameAnalysisCallback Optional callback to receive frames for analysis
      * @param onError Callback for error handling
      */
     fun startCamera(
         lifecycleOwner: LifecycleOwner,
         previewView: PreviewView,
         cameraSelector: CameraSelector = DEFAULT_CAMERA_SELECTOR,
+        frameAnalysisCallback: FrameAnalysisCallback? = null,
         onError: ((Exception) -> Unit)? = null
     ) {
+        this.frameCallback = frameAnalysisCallback
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
 
         cameraProviderFuture.addListener({
             try {
                 cameraProvider = cameraProviderFuture.get()
-                bindPreview(lifecycleOwner, previewView, cameraSelector)
+                bindCameraUseCases(lifecycleOwner, previewView, cameraSelector)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to get camera provider", e)
                 onError?.invoke(e)
@@ -58,9 +64,19 @@ class CameraManager(private val context: Context) {
     }
 
     /**
-     * Binds the camera preview to the lifecycle and view.
+     * Sets or updates the frame analysis callback.
+     * Can be called after camera is started to enable/disable frame analysis.
+     * 
+     * @param callback The callback to receive frames, or null to disable
      */
-    private fun bindPreview(
+    fun setFrameAnalysisCallback(callback: FrameAnalysisCallback?) {
+        this.frameCallback = callback
+    }
+
+    /**
+     * Binds the camera use cases (preview and optionally image analysis) to the lifecycle.
+     */
+    private fun bindCameraUseCases(
         lifecycleOwner: LifecycleOwner,
         previewView: PreviewView,
         cameraSelector: CameraSelector
@@ -80,16 +96,50 @@ class CameraManager(private val context: Context) {
                 it.surfaceProvider = previewView.surfaceProvider
             }
 
+        // Build the image analysis use case
+        imageAnalysis = ImageAnalysis.Builder()
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
+            .build()
+            .also { analysis ->
+                analysis.setAnalyzer(cameraExecutor) { imageProxy ->
+                    processFrame(imageProxy)
+                }
+            }
+
         try {
-            // Bind the preview to the camera and lifecycle
+            // Bind both preview and image analysis to the camera and lifecycle
             provider.bindToLifecycle(
                 lifecycleOwner,
                 cameraSelector,
-                preview
+                preview,
+                imageAnalysis
             )
-            Log.d(TAG, "Camera preview started successfully")
+            Log.d(TAG, "Camera preview and analysis started successfully")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to bind camera preview", e)
+            Log.e(TAG, "Failed to bind camera use cases", e)
+        }
+    }
+
+    /**
+     * Processes a single frame from the camera.
+     * Converts ImageProxy to Bitmap and invokes the callback on background thread.
+     */
+    private fun processFrame(imageProxy: androidx.camera.core.ImageProxy) {
+        try {
+            val callback = frameCallback
+            if (callback != null) {
+                val rotationDegrees = imageProxy.imageInfo.rotationDegrees
+                val timestampMs = imageProxy.imageInfo.timestamp / 1_000_000 // Convert ns to ms
+                
+                val bitmap = ImageProxyConverter.toBitmap(imageProxy, rotationDegrees)
+                callback.onFrameAvailable(bitmap, timestampMs, rotationDegrees)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error processing frame", e)
+        } finally {
+            // Always close the imageProxy to allow the next frame
+            imageProxy.close()
         }
     }
 

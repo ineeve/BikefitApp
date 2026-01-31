@@ -2,7 +2,9 @@ package pt.ineeve.bikefitapp.camera
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -13,12 +15,22 @@ import pt.ineeve.bikefitapp.R
 /**
  * Activity that displays the camera preview for bike fit analysis.
  * 
- * Handles camera permissions and manages the CameraX preview lifecycle.
+ * Handles camera permissions, manages the CameraX preview lifecycle,
+ * and provides frame analysis capability.
  */
 class CameraPreviewActivity : AppCompatActivity() {
 
     private lateinit var cameraManager: CameraManager
     private lateinit var previewView: PreviewView
+    
+    /** Counter for logging frame analysis (debug purposes) */
+    private var frameCount = 0L
+
+    companion object {
+        private const val TAG = "CameraPreviewActivity"
+        /** Log every Nth frame to avoid log spam */
+        private const val LOG_FRAME_INTERVAL = 30
+    }
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -78,6 +90,7 @@ class CameraPreviewActivity : AppCompatActivity() {
         cameraManager.startCamera(
             lifecycleOwner = this,
             previewView = previewView,
+            frameAnalysisCallback = this::onFrameReceived,
             onError = { exception ->
                 Toast.makeText(
                     this,
@@ -86,6 +99,28 @@ class CameraPreviewActivity : AppCompatActivity() {
                 ).show()
             }
         )
+    }
+
+    /**
+     * Called for each frame received from the camera.
+     * This runs on a background thread - do not update UI directly.
+     * 
+     * @param bitmap The camera frame as a Bitmap
+     * @param timestampMs Frame timestamp in milliseconds
+     * @param rotationDegrees Rotation applied to the bitmap
+     */
+    private fun onFrameReceived(bitmap: Bitmap, timestampMs: Long, rotationDegrees: Int) {
+        frameCount++
+        
+        // Log periodically to verify frames are being received
+        if (frameCount % LOG_FRAME_INTERVAL == 0L) {
+            Log.d(TAG, "Frame #$frameCount received: ${bitmap.width}x${bitmap.height}, " +
+                    "timestamp=$timestampMs ms, rotation=$rotationDegrees°")
+        }
+        
+        // TODO: Pass bitmap to pose estimation in future issues
+        // For now, just recycle the bitmap to free memory
+        bitmap.recycle()
     }
 
     override fun onDestroy() {
