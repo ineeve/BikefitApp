@@ -33,6 +33,12 @@
             android:configChanges="orientation|screenSize"
             android:label="Bike Calibration" />
         
+        <activity
+            android:name=".ui.FitSummaryActivity"
+            android:exported="false"
+            android:label="@string/fit_analysis_title"
+            android:theme="@style/Theme.BikefitApp" />
+        
     </application>
 
 </manifest>

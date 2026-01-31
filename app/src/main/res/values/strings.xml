@@ -15,4 +15,13 @@
     <string name="calibration_reset">Reset</string>
     <string name="calibration_incomplete">Please mark all three reference points</string>
     <string name="calibration_success">Calibration complete!</string>
+    
+    <!-- Fit Analysis -->
+    <string name="fit_analysis_title">Bike Fit Analysis</string>
+    <string name="recommendations_header">Recommendations</string>
+    <string name="severity_indicator">Severity indicator</string>
+    <string name="no_recommendations">No Adjustments Needed</string>
+    <string name="optimal_fit_message">Your bike setup is within optimal ranges. Keep riding!</string>
+    <string name="issue_count_format">%1$d issue(s) found</string>
+    <string name="issue_count_with_high_format">%1$d issue(s) found • %2$d high priority</string>
 </resources>

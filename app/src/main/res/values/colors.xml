@@ -13,4 +13,20 @@
     <color name="calibration_saddle">#FFFF5722</color>
     <color name="calibration_bottom_bracket">#FF4CAF50</color>
     <color name="calibration_handlebar">#FF2196F3</color>
+    
+    <!-- Severity Indicators -->
+    <color name="severity_high">#FFE53935</color>
+    <color name="severity_medium">#FFFFC107</color>
+    <color name="severity_low">#FF4CAF50</color>
+    
+    <!-- Fit Grade Colors -->
+    <color name="grade_excellent">#FF4CAF50</color>
+    <color name="grade_good">#FF8BC34A</color>
+    <color name="grade_fair">#FFFFC107</color>
+    <color name="grade_poor">#FFE53935</color>
+    
+    <!-- Fit Recommendations UI -->
+    <color name="recommendation_card_background">#FFFAFAFA</color>
+    <color name="recommendation_text_primary">#DE000000</color>
+    <color name="recommendation_text_secondary">#8A000000</color>
 </resources>
