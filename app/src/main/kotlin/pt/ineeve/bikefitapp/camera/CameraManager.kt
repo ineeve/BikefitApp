@@ -1,6 +1,8 @@
 package pt.ineeve.bikefitapp.camera
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
@@ -147,13 +149,26 @@ class CameraManager(private val context: Context) {
     /**
      * Sets the camera zoom to the minimum ratio (widest field of view).
      * This is important for bike fit analysis to capture the full bike and rider.
+     * Uses a delayed retry to ensure zoom state is available.
      */
     private fun setZoomToMinimum() {
         camera?.let { cam ->
             val zoomState = cam.cameraInfo.zoomState.value
-            val minZoom = zoomState?.minZoomRatio ?: MIN_ZOOM_RATIO
-            cam.cameraControl.setZoomRatio(minZoom)
-            Log.d(TAG, "Zoom set to minimum: $minZoom")
+            if (zoomState != null) {
+                val minZoom = zoomState.minZoomRatio
+                cam.cameraControl.setZoomRatio(minZoom)
+                Log.d(TAG, "Zoom set to minimum: $minZoom")
+            } else {
+                // Zoom state not ready yet, retry after a short delay
+                Handler(Looper.getMainLooper()).postDelayed({
+                    camera?.let { c ->
+                        val state = c.cameraInfo.zoomState.value
+                        val minZoom = state?.minZoomRatio ?: MIN_ZOOM_RATIO
+                        c.cameraControl.setZoomRatio(minZoom)
+                        Log.d(TAG, "Zoom set to minimum (delayed): $minZoom")
+                    }
+                }, 100)
+            }
         }
     }
     
