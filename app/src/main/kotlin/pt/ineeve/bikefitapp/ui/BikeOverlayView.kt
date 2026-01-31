@@ -166,6 +166,7 @@ class BikeOverlayView @JvmOverloads constructor(
             return
         }
         
+        // No longer needed for simple view-relative coordinates, but kept for potential future use or if we switch back to image-relative
         val viewAspect = width.toFloat() / height
         val imageAspect = imageWidth.toFloat() / imageHeight
         
@@ -346,13 +347,16 @@ class BikeOverlayView @JvmOverloads constructor(
         }
         
         // Transform from normalized to pixel coordinates in image space
-        var x = normalizedX * imageWidth * scaleFactor + postScaleWidthOffset
-        val y = normalizedY * imageHeight * scaleFactor + postScaleHeightOffset
+        // Note: Calibration points are recorded relative to the view, which is already
+        // scaled/cropped relative to the camera image. 
+        // If the aspect ratios match between calibration and preview (which they should now),
+        // we can use simple scaling.
+        val x = normalizedX * width
+        val y = normalizedY * height
         
-        // Handle mirroring for front camera
-        if (isMirrored) {
-            x = width - x
-        }
+        // Handle mirroring for front camera if needed (but currently calibration is view-relative)
+        // If we were mapping from image coordinates (like pose landmarks), we'd need the complex logic.
+        // Since calibration points are % of view, and the view is consistent, we just scale back up.
         
         return Pair(x, y)
     }

@@ -18,7 +18,7 @@
         <activity
             android:name=".camera.CameraPreviewActivity"
             android:exported="true"
-            android:screenOrientation="unspecified"
+            android:screenOrientation="landscape"
             android:configChanges="orientation|screenSize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
