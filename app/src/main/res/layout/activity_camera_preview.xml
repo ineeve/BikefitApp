@@ -34,4 +34,14 @@
         app:layout_constraintStart_toStartOf="@id/preview_view"
         app:layout_constraintEnd_toEndOf="@id/preview_view" />
 
+    <!-- Recording guidance overlay (positioned at bottom) -->
+    <pt.ineeve.bikefitapp.ui.RecordingGuidanceView
+        android:id="@+id/recording_guidance"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="32dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

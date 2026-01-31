@@ -24,4 +24,12 @@
     <string name="optimal_fit_message">Your bike setup is within optimal ranges. Keep riding!</string>
     <string name="issue_count_format">%1$d issue(s) found</string>
     <string name="issue_count_with_high_format">%1$d issue(s) found • %2$d high priority</string>
+    
+    <!-- Recording Guidance -->
+    <string name="guidance_tip_side_view">📷 Position camera at side view for best analysis</string>
+    <string name="guidance_tip_hip_height">📏 Place camera at hip height for accurate measurements</string>
+    <string name="guidance_tip_full_bike">🚴 Ensure the full bike and rider are visible in frame</string>
+    <string name="guidance_tip_start_pedaling">🔄 Start pedaling before we begin recording</string>
+    <string name="guidance_tip_indicator">%1$d/%2$d</string>
+    <string name="guidance_dismiss">Dismiss guidance</string>
 </resources>

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/guidance_container"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_recording_guidance"
+    android:padding="16dp"
+    android:layout_margin="16dp">
+
+    <!-- Header row with indicator and dismiss button -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <!-- Tip indicator (e.g., "1/4") -->
+        <TextView
+            android:id="@+id/guidance_tip_indicator"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="@android:color/white"
+            android:textSize="12sp"
+            android:alpha="0.7"
+            tools:text="1/4" />
+
+        <!-- Dismiss button -->
+        <ImageButton
+            android:id="@+id/guidance_dismiss_button"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/guidance_dismiss"
+            android:src="@drawable/ic_close"
+            app:tint="@android:color/white" />
+
+    </LinearLayout>
+
+    <!-- Tip text -->
+    <TextView
+        android:id="@+id/guidance_tip_text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:textColor="@android:color/white"
+        android:textSize="16sp"
+        android:lineSpacingMultiplier="1.2"
+        tools:text="Position camera at side view" />
+
+</LinearLayout>

@@ -20,6 +20,7 @@ import pt.ineeve.bikefitapp.pose.PoseLandmarkIndex
 import pt.ineeve.bikefitapp.ui.AngleDisplay
 import pt.ineeve.bikefitapp.ui.BikeOverlayView
 import pt.ineeve.bikefitapp.ui.PoseOverlayView
+import pt.ineeve.bikefitapp.ui.RecordingGuidanceView
 import com.google.mediapipe.tasks.vision.core.RunningMode
 
 /**
@@ -34,6 +35,7 @@ class CameraPreviewActivity : AppCompatActivity() {
     private lateinit var previewView: PreviewView
     private lateinit var poseOverlay: PoseOverlayView
     private lateinit var bikeOverlay: BikeOverlayView
+    private lateinit var recordingGuidance: RecordingGuidanceView
     private var poseLandmarkerWrapper: PoseLandmarkerWrapper? = null
     
     /** Current bike calibration to display on overlay */
@@ -90,6 +92,7 @@ class CameraPreviewActivity : AppCompatActivity() {
         previewView = findViewById(R.id.preview_view)
         poseOverlay = findViewById(R.id.pose_overlay)
         bikeOverlay = findViewById(R.id.bike_overlay)
+        recordingGuidance = findViewById(R.id.recording_guidance)
         cameraManager = CameraManager(this)
         
         // Load bike calibration from intent if provided
@@ -97,6 +100,9 @@ class CameraPreviewActivity : AppCompatActivity() {
         
         // Initialize pose landmarker with VIDEO mode for sequential frame processing
         initializePoseLandmarker()
+        
+        // Start recording guidance
+        startRecordingGuidance()
 
         checkCameraPermissionAndStart()
     }
@@ -123,6 +129,19 @@ class CameraPreviewActivity : AppCompatActivity() {
     fun updateBikeCalibration(calibration: BikeCalibration?) {
         bikeCalibration = calibration
         bikeOverlay.setCalibration(calibration)
+    }
+    
+    /**
+     * Starts the recording guidance overlay with tips for the user.
+     */
+    private fun startRecordingGuidance() {
+        recordingGuidance.onDismissListener = {
+            Log.d(TAG, "Recording guidance dismissed by user")
+        }
+        recordingGuidance.onCompleteListener = {
+            Log.d(TAG, "Recording guidance completed all tips")
+        }
+        recordingGuidance.startGuidance()
     }
     
     /**
