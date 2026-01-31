@@ -1,0 +1,506 @@
+package pt.ineeve.bikefitapp.biomechanics
+
+import org.junit.Assert.*
+import org.junit.Before
+import org.junit.Test
+
+class CycleAggregatorTest {
+
+    private lateinit var aggregator: CycleAggregator
+
+    @Before
+    fun setup() {
+        aggregator = CycleAggregator(BodySide.LEFT)
+    }
+
+    // ==================== Basic Construction Tests ====================
+
+    @Test
+    fun `aggregator initializes with zero cycles`() {
+        assertEquals(0, aggregator.getCycleCount())
+        assertTrue(aggregator.getCompletedCycles().isEmpty())
+    }
+
+    @Test
+    fun `aggregator initializes with correct side`() {
+        val leftAgg = CycleAggregator(BodySide.LEFT)
+        val rightAgg = CycleAggregator(BodySide.RIGHT)
+
+        assertEquals(BodySide.LEFT, leftAgg.getSide())
+        assertEquals(BodySide.RIGHT, rightAgg.getSide())
+    }
+
+    // ==================== Adding Measurements Tests ====================
+
+    @Test
+    fun `adding measurements does not create completed cycle`() {
+        aggregator.addMeasurement(
+            frameNumber = 0,
+            timestampMs = 0,
+            kneeAngle = 30f,
+            hipAngle = 70f,
+            torsoAngle = 45f
+        )
+
+        assertEquals(0, aggregator.getCycleCount())
+    }
+
+    @Test
+    fun `multiple measurements can be added`() {
+        for (i in 0..30) {
+            aggregator.addMeasurement(
+                frameNumber = i.toLong(),
+                timestampMs = i * 33L,
+                kneeAngle = 30f + i,
+                hipAngle = 70f,
+                torsoAngle = 45f
+            )
+        }
+
+        assertEquals(0, aggregator.getCycleCount())
+    }
+
+    @Test
+    fun `null measurements are not added to statistics`() {
+        aggregator.addMeasurement(
+            frameNumber = 0,
+            timestampMs = 0,
+            kneeAngle = null,
+            hipAngle = null,
+            torsoAngle = null
+        )
+
+        // End cycle to check
+        aggregator.endCycleAtBdc(0, 0, null) // First BDC starts cycle
+        aggregator.addMeasurement(1, 33, 30f, null, null)
+        val cycle = aggregator.endCycleAtBdc(30, 1000, 30f)
+
+        // Only knee angle was added
+        assertEquals(1, cycle?.kneeAngle?.sampleCount)
+        assertEquals(0, cycle?.hipAngle?.sampleCount)
+        assertEquals(0, cycle?.torsoAngle?.sampleCount)
+    }
+
+    // ==================== Cycle Completion Tests ====================
+
+    @Test
+    fun `first BDC does not complete a cycle`() {
+        // First BDC only starts the cycle, does not complete one
+        val result = aggregator.endCycleAtBdc(0, 0, 30f)
+
+        assertNull(result)
+        assertEquals(0, aggregator.getCycleCount())
+    }
+
+    @Test
+    fun `second BDC completes first cycle`() {
+        // First BDC starts cycle
+        aggregator.endCycleAtBdc(0, 0, 30f)
+
+        // Add measurements during cycle
+        for (i in 1..30) {
+            aggregator.addMeasurement(i.toLong(), i * 33L, 30f + i, 70f, 45f)
+        }
+
+        // Second BDC completes cycle
+        val cycle = aggregator.endCycleAtBdc(31, 1023, 32f)
+
+        assertNotNull(cycle)
+        assertEquals(1, aggregator.getCycleCount())
+        assertEquals(0, cycle!!.cycleNumber)
+    }
+
+    @Test
+    fun `multiple cycles can be completed`() {
+        // Simulate 5 complete cycles
+        for (cycleNum in 0..5) {
+            val startFrame = cycleNum * 30L
+            aggregator.endCycleAtBdc(startFrame, startFrame * 33, 30f)
+
+            for (i in 1..29) {
+                val frame = startFrame + i
+                aggregator.addMeasurement(frame, frame * 33, 50f, 70f, 45f)
+            }
+        }
+
+        // 5 completed cycles (6 BDCs = 5 cycles)
+        assertEquals(5, aggregator.getCycleCount())
+    }
+
+    @Test
+    fun `completed cycle has correct frame range`() {
+        aggregator.endCycleAtBdc(100, 3300, 30f)
+
+        for (i in 1..30) {
+            aggregator.addMeasurement(100 + i.toLong(), 3300 + i * 33L, 50f, 70f, 45f)
+        }
+
+        val cycle = aggregator.endCycleAtBdc(131, 4323, 30f)!!
+
+        assertEquals(100L, cycle.startFrameNumber)
+        assertEquals(131L, cycle.endFrameNumber)
+    }
+
+    @Test
+    fun `completed cycle has correct timestamps`() {
+        aggregator.endCycleAtBdc(0, 1000, 30f)
+
+        for (i in 1..30) {
+            aggregator.addMeasurement(i.toLong(), 1000 + i * 33L, 50f, 70f, 45f)
+        }
+
+        val cycle = aggregator.endCycleAtBdc(31, 2023, 30f)!!
+
+        assertEquals(1000L, cycle.startTimestampMs)
+        assertEquals(2023L, cycle.endTimestampMs)
+        assertEquals(1023L, cycle.durationMs)
+    }
+
+    // ==================== Angle Statistics Tests ====================
+
+    @Test
+    fun `cycle has correct knee angle statistics`() {
+        aggregator.endCycleAtBdc(0, 0, 30f)
+
+        // Add angles from 30 to 90
+        for (i in 0..60) {
+            aggregator.addMeasurement(i.toLong(), i * 16L, 30f + i, null, null)
+        }
+
+        val cycle = aggregator.endCycleAtBdc(61, 976, 30f)!!
+
+        assertEquals(30f, cycle.kneeAngle.min, 0.001f)
+        assertEquals(90f, cycle.kneeAngle.max, 0.001f)
+        assertEquals(60f, cycle.kneeAngle.average, 0.001f)
+        assertEquals(61, cycle.kneeAngle.sampleCount)
+    }
+
+    @Test
+    fun `cycle has correct hip angle statistics`() {
+        aggregator.endCycleAtBdc(0, 0, 30f)
+
+        // Add constant hip angle
+        for (i in 0..29) {
+            aggregator.addMeasurement(i.toLong(), i * 33L, 50f, 70f, null)
+        }
+
+        val cycle = aggregator.endCycleAtBdc(30, 990, 30f)!!
+
+        assertEquals(70f, cycle.hipAngle.min, 0.001f)
+        assertEquals(70f, cycle.hipAngle.max, 0.001f)
+        assertEquals(70f, cycle.hipAngle.average, 0.001f)
+    }
+
+    @Test
+    fun `cycle has correct torso angle statistics`() {
+        aggregator.endCycleAtBdc(0, 0, 30f)
+
+        // Add varying torso angles
+        aggregator.addMeasurement(0, 0, 50f, null, 40f)
+        aggregator.addMeasurement(1, 33, 50f, null, 50f)
+        aggregator.addMeasurement(2, 66, 50f, null, 45f)
+
+        val cycle = aggregator.endCycleAtBdc(3, 99, 30f)!!
+
+        assertEquals(40f, cycle.torsoAngle.min, 0.001f)
+        assertEquals(50f, cycle.torsoAngle.max, 0.001f)
+        assertEquals(45f, cycle.torsoAngle.average, 0.001f)
+    }
+
+    @Test
+    fun `cycle records knee angle at BDC`() {
+        aggregator.endCycleAtBdc(0, 0, 28f)
+        aggregator.addMeasurement(1, 33, 50f, 70f, 45f)
+        val cycle = aggregator.endCycleAtBdc(30, 990, 32f)!!
+
+        assertEquals(32f, cycle.kneeAngleAtBdc)
+    }
+
+    @Test
+    fun `cycle records knee angle at TDC`() {
+        aggregator.endCycleAtBdc(0, 0, 30f)
+        aggregator.addMeasurement(1, 33, 50f, 70f, 45f)
+        aggregator.recordTdc(95f)
+        aggregator.addMeasurement(16, 528, 50f, 70f, 45f)
+        val cycle = aggregator.endCycleAtBdc(30, 990, 30f)!!
+
+        assertEquals(95f, cycle.kneeAngleAtTdc)
+    }
+
+    // ==================== TDC-based Cycle Tests ====================
+
+    @Test
+    fun `cycle can end at TDC`() {
+        aggregator.endCycleAtTdc(0, 0, 90f)
+        aggregator.addMeasurement(1, 33, 50f, 70f, 45f)
+        val cycle = aggregator.endCycleAtTdc(30, 990, 92f)
+
+        assertNotNull(cycle)
+        assertEquals(92f, cycle!!.kneeAngleAtTdc)
+    }
+
+    // ==================== Summary Tests ====================
+
+    @Test
+    fun `summary returns invalid when no cycles`() {
+        val summary = aggregator.getSummary()
+
+        assertFalse(summary.isValid)
+        assertEquals(0, summary.cycleCount)
+        assertEquals(BodySide.LEFT, summary.side)
+    }
+
+    @Test
+    fun `summary calculates average BDC angle across cycles`() {
+        // Create 3 cycles with different BDC angles: 28, 30, 32
+        createCycleWithAngles(bdcAngle = 28f, tdcAngle = 90f)
+        createCycleWithAngles(bdcAngle = 30f, tdcAngle = 90f)
+        createCycleWithAngles(bdcAngle = 32f, tdcAngle = 90f)
+
+        val summary = aggregator.getSummary()
+
+        assertEquals(3, summary.cycleCount)
+        assertEquals(30f, summary.averageKneeAngleAtBdc!!, 0.001f)
+    }
+
+    @Test
+    fun `summary calculates average TDC angle across cycles`() {
+        createCycleWithAngles(bdcAngle = 30f, tdcAngle = 88f)
+        createCycleWithAngles(bdcAngle = 30f, tdcAngle = 90f)
+        createCycleWithAngles(bdcAngle = 30f, tdcAngle = 92f)
+
+        val summary = aggregator.getSummary()
+
+        assertEquals(90f, summary.averageKneeAngleAtTdc!!, 0.001f)
+    }
+
+    @Test
+    fun `summary calculates average knee range`() {
+        // Cycles with knee ranges of 60 (30-90), 50 (35-85), 55 (32-87)
+        createCycleWithKneeRange(30f, 90f)
+        createCycleWithKneeRange(35f, 85f)
+        createCycleWithKneeRange(32f, 87f)
+
+        val summary = aggregator.getSummary()
+
+        // Average range = (60 + 50 + 55) / 3 = 55
+        assertEquals(55f, summary.averageKneeAngleRange, 0.001f)
+    }
+
+    @Test
+    fun `summary calculates average cadence`() {
+        // Create cycles with known duration
+        aggregator.endCycleAtBdc(0, 0, 30f)
+        aggregator.addMeasurement(15, 500, 60f, 70f, 45f)
+        aggregator.endCycleAtBdc(30, 1000, 30f) // 1 second = 60 RPM
+        aggregator.addMeasurement(45, 1500, 60f, 70f, 45f)
+        aggregator.endCycleAtBdc(60, 2000, 30f) // 1 second = 60 RPM
+
+        val summary = aggregator.getSummary()
+
+        assertEquals(60f, summary.averageCadenceRpm!!, 1f)
+    }
+
+    @Test
+    fun `summary has BDC stats with min max avg`() {
+        createCycleWithAngles(bdcAngle = 25f, tdcAngle = 90f)
+        createCycleWithAngles(bdcAngle = 30f, tdcAngle = 90f)
+        createCycleWithAngles(bdcAngle = 35f, tdcAngle = 90f)
+
+        val summary = aggregator.getSummary()
+
+        assertEquals(25f, summary.kneeAngleAtBdcStats.min, 0.001f)
+        assertEquals(35f, summary.kneeAngleAtBdcStats.max, 0.001f)
+        assertEquals(30f, summary.kneeAngleAtBdcStats.average, 0.001f)
+    }
+
+    // ==================== GetLastCycle Tests ====================
+
+    @Test
+    fun `getLastCycle returns null when no cycles`() {
+        assertNull(aggregator.getLastCycle())
+    }
+
+    @Test
+    fun `getLastCycle returns most recent cycle`() {
+        createCycleWithAngles(bdcAngle = 28f, tdcAngle = 90f)
+        createCycleWithAngles(bdcAngle = 30f, tdcAngle = 92f)
+        createCycleWithAngles(bdcAngle = 32f, tdcAngle = 94f)
+
+        val lastCycle = aggregator.getLastCycle()!!
+
+        assertEquals(2, lastCycle.cycleNumber)
+        assertEquals(32f, lastCycle.kneeAngleAtBdc)
+    }
+
+    // ==================== Reset Tests ====================
+
+    @Test
+    fun `reset clears all data`() {
+        createCycleWithAngles(bdcAngle = 30f, tdcAngle = 90f)
+        createCycleWithAngles(bdcAngle = 30f, tdcAngle = 90f)
+
+        assertEquals(2, aggregator.getCycleCount())
+
+        aggregator.reset()
+
+        assertEquals(0, aggregator.getCycleCount())
+        assertTrue(aggregator.getCompletedCycles().isEmpty())
+        assertNull(aggregator.getLastCycle())
+    }
+
+    @Test
+    fun `reset allows new cycles to be recorded`() {
+        createCycleWithAngles(bdcAngle = 30f, tdcAngle = 90f)
+        aggregator.reset()
+        createCycleWithAngles(bdcAngle = 35f, tdcAngle = 95f)
+
+        assertEquals(1, aggregator.getCycleCount())
+        assertEquals(0, aggregator.getLastCycle()!!.cycleNumber)
+    }
+
+    // ==================== Static Aggregation Tests ====================
+
+    @Test
+    fun `static aggregateCycles works with cycle list`() {
+        val cycles = listOf(
+            createTestCycleMetrics(cycleNumber = 0, bdcAngle = 28f, tdcAngle = 88f),
+            createTestCycleMetrics(cycleNumber = 1, bdcAngle = 30f, tdcAngle = 90f),
+            createTestCycleMetrics(cycleNumber = 2, bdcAngle = 32f, tdcAngle = 92f)
+        )
+
+        val summary = CycleAggregator.aggregateCycles(cycles, BodySide.RIGHT)
+
+        assertEquals(3, summary.cycleCount)
+        assertEquals(30f, summary.averageKneeAngleAtBdc!!, 0.001f)
+        assertEquals(90f, summary.averageKneeAngleAtTdc!!, 0.001f)
+        assertEquals(BodySide.RIGHT, summary.side)
+    }
+
+    @Test
+    fun `static aggregateCycles returns invalid for empty list`() {
+        val summary = CycleAggregator.aggregateCycles(emptyList(), BodySide.LEFT)
+
+        assertFalse(summary.isValid)
+        assertEquals(0, summary.cycleCount)
+    }
+
+    // ==================== Edge Cases ====================
+
+    @Test
+    fun `cycle with only one measurement`() {
+        aggregator.endCycleAtBdc(0, 0, 30f)
+        aggregator.addMeasurement(1, 33, 45f, 70f, 42f)
+        val cycle = aggregator.endCycleAtBdc(2, 66, 30f)!!
+
+        assertEquals(1, cycle.kneeAngle.sampleCount)
+        assertEquals(45f, cycle.kneeAngle.average, 0.001f)
+        assertEquals(0f, cycle.kneeAngle.range, 0.001f)
+    }
+
+    @Test
+    fun `cycle side is correct`() {
+        val rightAgg = CycleAggregator(BodySide.RIGHT)
+        rightAgg.endCycleAtBdc(0, 0, 30f)
+        rightAgg.addMeasurement(1, 33, 45f, 70f, 42f)
+        val cycle = rightAgg.endCycleAtBdc(2, 66, 30f)!!
+
+        assertEquals(BodySide.RIGHT, cycle.side)
+    }
+
+    @Test
+    fun `getCompletedCycles returns copy of list`() {
+        createCycleWithAngles(bdcAngle = 30f, tdcAngle = 90f)
+
+        val cycles1 = aggregator.getCompletedCycles()
+        val cycles2 = aggregator.getCompletedCycles()
+
+        assertEquals(cycles1, cycles2)
+        assertNotSame(cycles1, cycles2)
+    }
+
+    // ==================== Helper Functions ====================
+
+    private var testFrameCounter = 0L
+    private var testTimeCounter = 0L
+
+    private fun createCycleWithAngles(bdcAngle: Float, tdcAngle: Float) {
+        if (aggregator.getCycleCount() == 0 && testFrameCounter == 0L) {
+            // Initialize first BDC
+            aggregator.endCycleAtBdc(testFrameCounter, testTimeCounter, bdcAngle)
+            testFrameCounter++
+            testTimeCounter += 33
+        }
+
+        // Add some measurements
+        for (i in 0..15) {
+            aggregator.addMeasurement(
+                testFrameCounter,
+                testTimeCounter,
+                kneeAngle = 60f,
+                hipAngle = 70f,
+                torsoAngle = 45f
+            )
+            testFrameCounter++
+            testTimeCounter += 33
+        }
+
+        aggregator.recordTdc(tdcAngle)
+
+        for (i in 0..14) {
+            aggregator.addMeasurement(
+                testFrameCounter,
+                testTimeCounter,
+                kneeAngle = 60f,
+                hipAngle = 70f,
+                torsoAngle = 45f
+            )
+            testFrameCounter++
+            testTimeCounter += 33
+        }
+
+        aggregator.endCycleAtBdc(testFrameCounter, testTimeCounter, bdcAngle)
+        testFrameCounter++
+        testTimeCounter += 33
+    }
+
+    private fun createCycleWithKneeRange(minKnee: Float, maxKnee: Float) {
+        if (aggregator.getCycleCount() == 0 && testFrameCounter == 0L) {
+            aggregator.endCycleAtBdc(testFrameCounter, testTimeCounter, minKnee)
+            testFrameCounter++
+            testTimeCounter += 33
+        }
+
+        aggregator.addMeasurement(testFrameCounter, testTimeCounter, minKnee, 70f, 45f)
+        testFrameCounter++
+        testTimeCounter += 33
+
+        aggregator.addMeasurement(testFrameCounter, testTimeCounter, maxKnee, 70f, 45f)
+        testFrameCounter++
+        testTimeCounter += 33
+
+        aggregator.endCycleAtBdc(testFrameCounter, testTimeCounter, minKnee)
+        testFrameCounter++
+        testTimeCounter += 33
+    }
+
+    private fun createTestCycleMetrics(
+        cycleNumber: Int,
+        bdcAngle: Float,
+        tdcAngle: Float
+    ): CycleMetrics {
+        return CycleMetrics(
+            cycleNumber = cycleNumber,
+            startFrameNumber = cycleNumber * 30L,
+            endFrameNumber = (cycleNumber + 1) * 30L,
+            startTimestampMs = cycleNumber * 1000L,
+            endTimestampMs = (cycleNumber + 1) * 1000L,
+            kneeAngle = AngleStats(min = bdcAngle, max = tdcAngle, average = (bdcAngle + tdcAngle) / 2, sampleCount = 30),
+            hipAngle = AngleStats(min = 65f, max = 75f, average = 70f, sampleCount = 30),
+            torsoAngle = AngleStats(min = 40f, max = 50f, average = 45f, sampleCount = 30),
+            kneeAngleAtBdc = bdcAngle,
+            kneeAngleAtTdc = tdcAngle,
+            side = BodySide.LEFT
+        )
+    }
+}
