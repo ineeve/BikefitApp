@@ -544,6 +544,13 @@ class CameraPreviewActivity : AppCompatActivity() {
         FitSummaryActivity.start(this, summary)
     }
 
+    override fun onPause() {
+        super.onPause()
+        // Stop the camera when leaving this activity
+        // This ensures CalibrationActivity can use the camera
+        cameraManager.stopCamera()
+    }
+
     override fun onResume() {
         super.onResume()
         // Restart camera preview when returning from another activity

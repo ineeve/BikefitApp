@@ -257,6 +257,11 @@ class CalibrationActivity : AppCompatActivity() {
         resetButton.isEnabled = calibration.pointCount > 0
     }
 
+    override fun onPause() {
+        super.onPause()
+        cameraManager.stopCamera()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         cameraManager.shutdown()
