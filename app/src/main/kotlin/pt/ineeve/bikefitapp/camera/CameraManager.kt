@@ -2,6 +2,7 @@ package pt.ineeve.bikefitapp.camera
 
 import android.content.Context
 import android.util.Log
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
@@ -21,6 +22,7 @@ import java.util.concurrent.Executors
 class CameraManager(private val context: Context) {
 
     private var cameraProvider: ProcessCameraProvider? = null
+    private var camera: Camera? = null
     private var preview: Preview? = null
     private var imageAnalysis: ImageAnalysis? = null
     private var cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
@@ -32,6 +34,9 @@ class CameraManager(private val context: Context) {
         
         /** Default camera to use - back camera for bike fit analysis */
         val DEFAULT_CAMERA_SELECTOR: CameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+        
+        /** Minimum zoom ratio (widest view) */
+        const val MIN_ZOOM_RATIO = 1.0f
     }
 
     /**
@@ -123,16 +128,58 @@ class CameraManager(private val context: Context) {
 
         try {
             // Bind both preview and image analysis to the camera and lifecycle
-            provider.bindToLifecycle(
+            camera = provider.bindToLifecycle(
                 lifecycleOwner,
                 cameraSelector,
                 preview,
                 imageAnalysis
             )
+            
+            // Set zoom to minimum (widest view) for bike fit analysis
+            setZoomToMinimum()
+            
             Log.d(TAG, "Camera preview and analysis started successfully")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to bind camera use cases", e)
         }
+    }
+    
+    /**
+     * Sets the camera zoom to the minimum ratio (widest field of view).
+     * This is important for bike fit analysis to capture the full bike and rider.
+     */
+    private fun setZoomToMinimum() {
+        camera?.let { cam ->
+            val zoomState = cam.cameraInfo.zoomState.value
+            val minZoom = zoomState?.minZoomRatio ?: MIN_ZOOM_RATIO
+            cam.cameraControl.setZoomRatio(minZoom)
+            Log.d(TAG, "Zoom set to minimum: $minZoom")
+        }
+    }
+    
+    /**
+     * Sets the camera zoom ratio.
+     * 
+     * @param ratio The zoom ratio to set. Will be clamped to the camera's supported range.
+     */
+    fun setZoomRatio(ratio: Float) {
+        camera?.let { cam ->
+            val zoomState = cam.cameraInfo.zoomState.value
+            val minZoom = zoomState?.minZoomRatio ?: MIN_ZOOM_RATIO
+            val maxZoom = zoomState?.maxZoomRatio ?: ratio
+            val clampedRatio = ratio.coerceIn(minZoom, maxZoom)
+            cam.cameraControl.setZoomRatio(clampedRatio)
+            Log.d(TAG, "Zoom set to: $clampedRatio (requested: $ratio)")
+        }
+    }
+    
+    /**
+     * Gets the current zoom ratio.
+     * 
+     * @return The current zoom ratio, or null if camera is not initialized
+     */
+    fun getZoomRatio(): Float? {
+        return camera?.cameraInfo?.zoomState?.value?.zoomRatio
     }
 
     /**
