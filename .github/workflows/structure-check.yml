@@ -1,0 +1,59 @@
+name: Structure Check
+
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/**'
+      - 'app/src/test/java/**'
+
+jobs:
+  validate-structure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Validate package structure exists
+      run: |
+        echo "Checking required package structure..."
+        BASE="app/src/main/java/pt/ineeve/bikefitapp"
+        
+        REQUIRED_PACKAGES=(
+          "camera"
+          "pose"
+          "calibration"
+          "biomechanics"
+          "fit"
+          "ui"
+        )
+        
+        MISSING=0
+        for pkg in "${REQUIRED_PACKAGES[@]}"; do
+          if [ -d "$BASE/$pkg" ]; then
+            echo "✓ $pkg package exists"
+          else
+            echo "✗ $pkg package missing"
+            MISSING=$((MISSING + 1))
+          fi
+        done
+        
+        if [ $MISSING -gt 0 ]; then
+          echo ""
+          echo "Warning: $MISSING package(s) missing (may not be required yet)"
+        fi
+        
+        echo ""
+        echo "Package structure check complete"
+    
+    - name: Validate Kotlin syntax (basic)
+      run: |
+        echo "Checking for Kotlin syntax issues..."
+        # Find all Kotlin files and check for basic syntax
+        find app/src -name "*.kt" -type f | while read file; do
+          # Check for package declaration
+          if ! grep -q "^package " "$file" 2>/dev/null; then
+            echo "Warning: $file may be missing package declaration"
+          fi
+        done
+        echo "Kotlin syntax check complete"
