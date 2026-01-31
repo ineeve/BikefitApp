@@ -42,4 +42,10 @@
     <string name="status_error">An error occurred during analysis. Please try again.</string>
     <string name="status_action_recalibrate">RECALIBRATE</string>
     <string name="status_action_retry">RETRY</string>
+    
+    <!-- Navigation -->
+    <string name="start_analysis">Start Analysis</string>
+    <string name="analyze_fit">Analyze Fit</string>
+    <string name="calibration_required">Please calibrate bike first</string>
+    <string name="analysis_complete">Analysis complete</string>
 </resources>

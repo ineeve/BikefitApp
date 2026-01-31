@@ -1,20 +1,28 @@
 package pt.ineeve.bikefitapp.camera
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import com.google.android.material.button.MaterialButton
 import pt.ineeve.bikefitapp.R
 import pt.ineeve.bikefitapp.biomechanics.BodySide
+import pt.ineeve.bikefitapp.biomechanics.CycleSummary
 import pt.ineeve.bikefitapp.biomechanics.KneeAngleCalculator
 import pt.ineeve.bikefitapp.calibration.BikeCalibration
+import pt.ineeve.bikefitapp.calibration.CalibrationActivity
 import pt.ineeve.bikefitapp.calibration.CalibrationRepository
+import pt.ineeve.bikefitapp.fit.FitAnalysisInput
+import pt.ineeve.bikefitapp.fit.FitEngine
+import pt.ineeve.bikefitapp.fit.FitSummary
 import pt.ineeve.bikefitapp.pose.PoseLandmarkerWrapper
 import pt.ineeve.bikefitapp.pose.PoseResult
 import pt.ineeve.bikefitapp.pose.PoseLandmarkIndex
@@ -22,6 +30,7 @@ import pt.ineeve.bikefitapp.ui.AngleDisplay
 import pt.ineeve.bikefitapp.ui.AnalysisStatus
 import pt.ineeve.bikefitapp.ui.AnalysisStatusView
 import pt.ineeve.bikefitapp.ui.BikeOverlayView
+import pt.ineeve.bikefitapp.ui.FitSummaryActivity
 import pt.ineeve.bikefitapp.ui.PoseOverlayView
 import pt.ineeve.bikefitapp.ui.RecordingGuidanceView
 import pt.ineeve.bikefitapp.ui.StatusMessage
@@ -41,10 +50,14 @@ class CameraPreviewActivity : AppCompatActivity() {
     private lateinit var bikeOverlay: BikeOverlayView
     private lateinit var recordingGuidance: RecordingGuidanceView
     private lateinit var analysisStatus: AnalysisStatusView
+    private lateinit var startButton: MaterialButton
     private var poseLandmarkerWrapper: PoseLandmarkerWrapper? = null
     
     /** Current bike calibration to display on overlay */
     private var bikeCalibration: BikeCalibration? = null
+    
+    /** Whether calibration has been completed */
+    private var hasCalibration = false
     
     /** Counter for logging frame analysis (debug purposes) */
     private var frameCount = 0L
@@ -101,6 +114,14 @@ class CameraPreviewActivity : AppCompatActivity() {
             finish()
         }
     }
+    
+    /** Launcher for CalibrationActivity result */
+    private val calibrationLauncher: ActivityResultLauncher<Intent> = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        // Calibration returns via CalibrationRepository
+        onCalibrationComplete()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -111,7 +132,11 @@ class CameraPreviewActivity : AppCompatActivity() {
         bikeOverlay = findViewById(R.id.bike_overlay)
         recordingGuidance = findViewById(R.id.recording_guidance)
         analysisStatus = findViewById(R.id.analysis_status)
+        startButton = findViewById(R.id.start_button)
         cameraManager = CameraManager(this)
+        
+        // Setup button click listener
+        setupStartButton()
         
         // Setup analysis status action callback
         setupAnalysisStatusCallbacks()
@@ -430,6 +455,82 @@ class CameraPreviewActivity : AppCompatActivity() {
         
         // Show low confidence warning
         analysisStatus.showStatus(StatusMessage.lowConfidence())
+    }
+    
+    // ==================== Navigation ====================
+    
+    /**
+     * Sets up the start/analyze button.
+     */
+    private fun setupStartButton() {
+        startButton.setOnClickListener {
+            if (hasCalibration) {
+                navigateToFitSummary()
+            } else {
+                navigateToCalibration()
+            }
+        }
+        updateStartButton()
+    }
+    
+    /**
+     * Updates the start button text based on calibration state.
+     */
+    private fun updateStartButton() {
+        if (hasCalibration) {
+            startButton.text = getString(R.string.analyze_fit)
+            startButton.setIconResource(R.drawable.ic_camera)
+        } else {
+            startButton.text = getString(R.string.start_analysis)
+            startButton.setIconResource(R.drawable.ic_camera)
+        }
+    }
+    
+    /**
+     * Navigates to the calibration activity.
+     */
+    private fun navigateToCalibration() {
+        val intent = Intent(this, CalibrationActivity::class.java)
+        calibrationLauncher.launch(intent)
+    }
+    
+    /**
+     * Called when calibration is complete.
+     */
+    private fun onCalibrationComplete() {
+        // Load calibration from repository
+        val calibration = CalibrationRepository.getCalibration()
+        if (calibration != null && calibration.isComplete) {
+            hasCalibration = true
+            bikeCalibration = calibration
+            bikeOverlay.setCalibration(calibration)
+            updateStartButton()
+            Log.d(TAG, "Calibration loaded: ${calibration.pointCount} points")
+        }
+    }
+    
+    /**
+     * Navigates to the fit summary activity with analysis results.
+     */
+    private fun navigateToFitSummary() {
+        val calibration = bikeCalibration
+        if (calibration == null || !calibration.isComplete) {
+            Toast.makeText(this, R.string.calibration_required, Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        // Create minimal analysis input (for MVP, we use placeholder data)
+        // In a full implementation, this would use actual collected cycle data
+        val input = FitAnalysisInput(
+            cycleSummary = CycleSummary.invalid(),
+            bikeCalibration = calibration
+        )
+        
+        val engine = FitEngine.default()
+        val result = engine.analyze(input)
+        val summary = FitSummary.fromAnalysisResult(result)
+        
+        FitSummaryActivity.start(this, summary)
     }
 
     override fun onDestroy() {
