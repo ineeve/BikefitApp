@@ -307,13 +307,45 @@ class PoseOverlayView @JvmOverloads constructor(
     
     /**
      * Transforms a landmark from normalized coordinates to view coordinates.
+     * Handles proper scaling and cropping to match PreviewView's FILL_CENTER behavior.
      */
     private fun transformCoordinates(landmark: Landmark): PointF {
-        var x = landmark.x * width
-        val y = landmark.y * height
+        // If image source info is not available, fallback to stretch
+        if (imageWidth <= 0 || imageHeight <= 0) {
+            var x = landmark.x * width
+            val y = landmark.y * height
+            if (isMirrored) x = width - x
+            return PointF(x, y)
+        }
+
+        // Calculate scale to fill the view (maintaining aspect ratio)
+        val viewAspectRatio = width.toFloat() / height
+        val imageAspectRatio = imageWidth.toFloat() / imageHeight
+        
+        val scaleFactor = if (viewAspectRatio > imageAspectRatio) {
+            // View is wider than image: scale to match width
+            width.toFloat() / imageWidth
+        } else {
+            // View is taller than image: scale to match height
+            height.toFloat() / imageHeight
+        }
+
+        // Calculate the scaled dimensions
+        val scaledWidth = imageWidth * scaleFactor
+        val scaledHeight = imageHeight * scaleFactor
+
+        // Calculate centering offsets (will be negative for the cropped axis)
+        val xOffset = (width - scaledWidth) / 2
+        val yOffset = (height - scaledHeight) / 2
+
+        // Transform coordinate
+        var x = (landmark.x * imageWidth * scaleFactor) + xOffset
+        val y = (landmark.y * imageHeight * scaleFactor) + yOffset
         
         // Mirror horizontally if front camera
+        // Note: We mirror relative to the *view* width, after transformation
         if (isMirrored) {
+            // For mirrored wrap, we reflect across the view center
             x = width - x
         }
         
