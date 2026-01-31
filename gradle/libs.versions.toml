@@ -9,6 +9,8 @@ appcompat = "1.7.0"
 material = "1.12.0"
 mediapipe = "0.10.21"
 cameraX = "1.4.1"
+constraintlayout = "2.2.0"
+activityKtx = "1.9.3"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -22,6 +24,8 @@ camerax-core = { group = "androidx.camera", name = "camera-core", version.ref = 
 camerax-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "cameraX" }
 camerax-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "cameraX" }
 camerax-view = { group = "androidx.camera", name = "camera-view", version.ref = "cameraX" }
+androidx-constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
+androidx-activity-ktx = { group = "androidx.activity", name = "activity-ktx", version.ref = "activityKtx" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -1,3 +1,8 @@
 <resources>
     <string name="app_name">BikefitApp</string>
+    
+    <!-- Camera -->
+    <string name="camera_permission_denied">Camera permission is required for bike fit analysis</string>
+    <string name="camera_permission_rationale">This app needs camera access to analyze your bike fit position</string>
+    <string name="camera_error">Camera error: %1$s</string>
 </resources>
