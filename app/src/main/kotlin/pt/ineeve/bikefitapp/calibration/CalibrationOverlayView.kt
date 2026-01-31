@@ -31,14 +31,23 @@ class CalibrationOverlayView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
 
-    /** Listener for tap events */
+    /** Listener for tap events (new point) */
     var onPointTappedListener: ((Float, Float) -> Unit)? = null
+    
+    /** Listener for point adjustment (existing point moved) */
+    var onPointAdjustedListener: ((BikeReferencePointType, Float, Float) -> Unit)? = null
 
     /** Current calibration data to display */
     private var calibration: BikeCalibration = BikeCalibration.EMPTY
 
     /** Current calibration state for visual hints */
     private var state: CalibrationState = CalibrationState.WaitingForSaddle
+    
+    /** Currently selected/dragging point type */
+    private var selectedPoint: BikeReferencePointType? = null
+    
+    /** Whether we're currently dragging a point */
+    private var isDragging = false
 
     // Paint objects for drawing
     private val pointPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -49,6 +58,12 @@ class CalibrationOverlayView @JvmOverloads constructor(
         style = Paint.Style.STROKE
         strokeWidth = 4f
         color = Color.WHITE
+    }
+    
+    private val selectedStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 6f
+        color = Color.YELLOW
     }
 
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -73,6 +88,9 @@ class CalibrationOverlayView @JvmOverloads constructor(
         
         /** Radius of the outer ring */
         private const val POINT_OUTER_RADIUS = 32f
+        
+        /** Touch radius for selecting a point (larger than visual for easier touch) */
+        private const val TOUCH_RADIUS = 60f
         
         /** Colors for each point type */
         private val COLOR_SADDLE = Color.rgb(255, 87, 34)      // Deep Orange
@@ -100,14 +118,74 @@ class CalibrationOverlayView @JvmOverloads constructor(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action == MotionEvent.ACTION_DOWN) {
-            // Normalize coordinates to 0-1 range
-            val normalizedX = event.x / width
-            val normalizedY = event.y / height
-            onPointTappedListener?.invoke(normalizedX, normalizedY)
-            return true
+        val normalizedX = event.x / width
+        val normalizedY = event.y / height
+        
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                // Check if touching an existing point
+                val touchedPoint = findPointAt(event.x, event.y)
+                if (touchedPoint != null) {
+                    // Start dragging this point
+                    selectedPoint = touchedPoint
+                    isDragging = true
+                    invalidate()
+                    return true
+                } else if (state.getCurrentPointType() != null) {
+                    // No existing point touched, create new point
+                    onPointTappedListener?.invoke(normalizedX, normalizedY)
+                    return true
+                }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (isDragging && selectedPoint != null) {
+                    // Update the point position while dragging
+                    onPointAdjustedListener?.invoke(selectedPoint!!, normalizedX, normalizedY)
+                    return true
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (isDragging) {
+                    // Finish dragging
+                    selectedPoint = null
+                    isDragging = false
+                    invalidate()
+                    return true
+                }
+            }
         }
         return super.onTouchEvent(event)
+    }
+    
+    /**
+     * Finds which point (if any) is at the given screen coordinates.
+     */
+    private fun findPointAt(x: Float, y: Float): BikeReferencePointType? {
+        calibration.saddleTop?.let { point ->
+            if (isPointNear(x, y, point.x * width, point.y * height)) {
+                return BikeReferencePointType.SADDLE_TOP
+            }
+        }
+        calibration.bottomBracket?.let { point ->
+            if (isPointNear(x, y, point.x * width, point.y * height)) {
+                return BikeReferencePointType.BOTTOM_BRACKET
+            }
+        }
+        calibration.handlebar?.let { point ->
+            if (isPointNear(x, y, point.x * width, point.y * height)) {
+                return BikeReferencePointType.HANDLEBAR
+            }
+        }
+        return null
+    }
+    
+    /**
+     * Checks if a touch point is near a calibration point.
+     */
+    private fun isPointNear(touchX: Float, touchY: Float, pointX: Float, pointY: Float): Boolean {
+        val dx = touchX - pointX
+        val dy = touchY - pointY
+        return (dx * dx + dy * dy) <= TOUCH_RADIUS * TOUCH_RADIUS
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -118,27 +196,40 @@ class CalibrationOverlayView @JvmOverloads constructor(
         
         // Draw each marked point
         calibration.saddleTop?.let { point ->
-            drawPoint(canvas, point, "Saddle", COLOR_SADDLE)
+            val isSelected = selectedPoint == BikeReferencePointType.SADDLE_TOP
+            drawPoint(canvas, point, "Saddle", COLOR_SADDLE, isSelected)
         }
         
         calibration.bottomBracket?.let { point ->
-            drawPoint(canvas, point, "BB", COLOR_BOTTOM_BRACKET)
+            val isSelected = selectedPoint == BikeReferencePointType.BOTTOM_BRACKET
+            drawPoint(canvas, point, "BB", COLOR_BOTTOM_BRACKET, isSelected)
         }
         
         calibration.handlebar?.let { point ->
-            drawPoint(canvas, point, "Handlebar", COLOR_HANDLEBAR)
+            val isSelected = selectedPoint == BikeReferencePointType.HANDLEBAR
+            drawPoint(canvas, point, "Handlebar", COLOR_HANDLEBAR, isSelected)
         }
         
-        // Draw hint for next point to tap
-        drawNextPointHint(canvas)
+        // Draw hint for next point to tap (only if not all points set)
+        if (!calibration.isComplete) {
+            drawNextPointHint(canvas)
+        } else {
+            // Draw adjustment hint when all points are set
+            drawAdjustmentHint(canvas)
+        }
     }
 
     /**
      * Draws a reference point with label.
      */
-    private fun drawPoint(canvas: Canvas, point: BikeReferencePoint, label: String, color: Int) {
+    private fun drawPoint(canvas: Canvas, point: BikeReferencePoint, label: String, color: Int, isSelected: Boolean = false) {
         val x = point.x * width
         val y = point.y * height
+        
+        // Draw selection indicator if selected
+        if (isSelected) {
+            canvas.drawCircle(x, y, POINT_OUTER_RADIUS + 12f, selectedStrokePaint)
+        }
         
         // Draw outer ring
         pointStrokePaint.color = Color.WHITE
@@ -149,7 +240,8 @@ class CalibrationOverlayView @JvmOverloads constructor(
         canvas.drawCircle(x, y, POINT_RADIUS, pointPaint)
         
         // Draw label background
-        val labelWidth = labelPaint.measureText(label) + 20f
+        val displayLabel = if (isSelected) "⟷ $label" else label
+        val labelWidth = labelPaint.measureText(displayLabel) + 20f
         val labelHeight = 40f
         canvas.drawRoundRect(
             x - labelWidth / 2,
@@ -161,7 +253,35 @@ class CalibrationOverlayView @JvmOverloads constructor(
         )
         
         // Draw label text
-        canvas.drawText(label, x, y + LABEL_OFFSET_Y + 10f, labelPaint)
+        canvas.drawText(displayLabel, x, y + LABEL_OFFSET_Y + 10f, labelPaint)
+    }
+    
+    /**
+     * Draws a hint to let the user know they can adjust points.
+     */
+    private fun drawAdjustmentHint(canvas: Canvas) {
+        val hintText = "Drag points to adjust • Tap Confirm when ready"
+        val hintPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = 28f
+            color = Color.WHITE
+            textAlign = Paint.Align.CENTER
+        }
+        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(180, 0, 0, 0)
+        }
+        
+        val textWidth = hintPaint.measureText(hintText) + 40f
+        val y = height * 0.92f  // Near bottom
+        
+        canvas.drawRoundRect(
+            width / 2f - textWidth / 2f,
+            y - 25f,
+            width / 2f + textWidth / 2f,
+            y + 15f,
+            12f, 12f,
+            bgPaint
+        )
+        canvas.drawText(hintText, width / 2f, y, hintPaint)
     }
 
     /**

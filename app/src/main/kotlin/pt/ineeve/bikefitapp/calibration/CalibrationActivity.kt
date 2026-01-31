@@ -85,6 +85,10 @@ class CalibrationActivity : AppCompatActivity() {
         overlayView.onPointTappedListener = { normalizedX, normalizedY ->
             onPointTapped(normalizedX, normalizedY)
         }
+        
+        overlayView.onPointAdjustedListener = { pointType, normalizedX, normalizedY ->
+            onPointAdjusted(pointType, normalizedX, normalizedY)
+        }
 
         confirmButton.setOnClickListener {
             onConfirmClicked()
@@ -159,6 +163,26 @@ class CalibrationActivity : AppCompatActivity() {
         }
 
         updateUI()
+    }
+    
+    /**
+     * Handles adjustment of an existing calibration point (drag).
+     */
+    private fun onPointAdjusted(pointType: BikeReferencePointType, normalizedX: Float, normalizedY: Float) {
+        Log.d(TAG, "Point adjusted: $pointType to ($normalizedX, $normalizedY)")
+        
+        // Create the updated reference point
+        val point = BikeReferencePoint(
+            type = pointType,
+            x = normalizedX,
+            y = normalizedY
+        )
+        
+        // Update calibration with the adjusted point
+        calibration = calibration.withPoint(point)
+        
+        // Update the overlay to show new position
+        overlayView.setCalibration(calibration)
     }
 
     /**
