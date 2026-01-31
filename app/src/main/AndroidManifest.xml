@@ -4,7 +4,9 @@
 
     <!-- Camera permission required for MediaPipe Pose detection -->
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-feature android:name="android.hardware.camera" android:required="true" />
+    <!-- Camera hardware is essential for bike fitting but not marked as required
+         to allow installation on all devices. App will check at runtime. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
         android:allowBackup="true"
