@@ -7,12 +7,14 @@ package pt.ineeve.bikefitapp.biomechanics
  * @param max Maximum value observed during the cycle
  * @param average Mean value during the cycle
  * @param sampleCount Number of samples used in the calculation
+ * @param standardDeviation Standard deviation of the values
  */
 data class AngleStats(
     val min: Float,
     val max: Float,
     val average: Float,
-    val sampleCount: Int
+    val sampleCount: Int,
+    val standardDeviation: Float = 0f
 ) {
     /**
      * Range of the angle (max - min).
@@ -34,7 +36,8 @@ data class AngleStats(
             min = 0f,
             max = 0f,
             average = 0f,
-            sampleCount = 0
+            sampleCount = 0,
+            standardDeviation = 0f
         )
 
         /**
@@ -43,11 +46,20 @@ data class AngleStats(
         fun fromValues(values: List<Float>): AngleStats {
             if (values.isEmpty()) return INVALID
 
+            val mean = values.average().toFloat()
+            val variance = if (values.size > 1) {
+                values.map { (it - mean) * (it - mean) }.average().toFloat()
+            } else {
+                0f
+            }
+            val stdDev = kotlin.math.sqrt(variance)
+
             return AngleStats(
                 min = values.minOrNull() ?: 0f,
                 max = values.maxOrNull() ?: 0f,
-                average = values.average().toFloat(),
-                sampleCount = values.size
+                average = mean,
+                sampleCount = values.size,
+                standardDeviation = stdDev
             )
         }
     }
@@ -159,6 +171,8 @@ data class CycleMetrics(
  * @param hipAngleStats Full stats for hip angle
  * @param torsoAngleStats Full stats for torso angle
  * @param side Which side this summary represents
+ * @param dataQuality Quality score from 0-1 indicating reliability
+ * @param outlierCount Number of cycles rejected as outliers
  */
 data class CycleSummary(
     val cycleCount: Int,
@@ -172,15 +186,26 @@ data class CycleSummary(
     val kneeAngleAtTdcStats: AngleStats,
     val hipAngleStats: AngleStats,
     val torsoAngleStats: AngleStats,
-    val side: BodySide
+    val side: BodySide,
+    val dataQuality: Float = 1.0f,
+    val outlierCount: Int = 0
 ) {
     /**
      * True if this summary has valid data.
      */
     val isValid: Boolean
         get() = cycleCount > 0
-
+    
+    /**
+     * True if the data meets minimum quality thresholds.
+     */
+    val meetsQualityThreshold: Boolean
+        get() = cycleCount >= MIN_CYCLES_FOR_QUALITY && dataQuality >= MIN_DATA_QUALITY
+    
     companion object {
+        const val MIN_CYCLES_FOR_QUALITY = 3
+        const val MIN_DATA_QUALITY = 0.5f
+        
         /**
          * Creates an invalid/empty summary.
          */
@@ -197,7 +222,9 @@ data class CycleSummary(
                 kneeAngleAtTdcStats = AngleStats.INVALID,
                 hipAngleStats = AngleStats.INVALID,
                 torsoAngleStats = AngleStats.INVALID,
-                side = side
+                side = side,
+                dataQuality = 0f,
+                outlierCount = 0
             )
         }
     }

@@ -170,45 +170,12 @@ class CycleAggregator(
     fun getCycleCount(): Int = completedCycles.size
 
     /**
-     * Gets a summary of all completed cycles.
+     * Gets a summary of all completed cycles with outlier filtering applied.
+     * 
+     * @param applyOutlierFiltering Whether to filter outliers (default: true)
      */
-    fun getSummary(): CycleSummary {
-        if (completedCycles.isEmpty()) {
-            return CycleSummary.invalid(side)
-        }
-
-        // Collect BDC/TDC angles from all cycles
-        val bdcAngles = completedCycles.mapNotNull { it.kneeAngleAtBdc }
-        val tdcAngles = completedCycles.mapNotNull { it.kneeAngleAtTdc }
-
-        // Calculate average ranges
-        val kneeRanges = completedCycles.map { it.kneeAngle.range }
-        val hipAverages = completedCycles.map { it.hipAngle.average }
-        val torsoAverages = completedCycles.map { it.torsoAngle.average }
-        val cadences = completedCycles.mapNotNull { it.cadenceRpm }
-
-        return CycleSummary(
-            cycleCount = completedCycles.size,
-            averageKneeAngleAtBdc = if (bdcAngles.isNotEmpty()) bdcAngles.average().toFloat() else null,
-            averageKneeAngleAtTdc = if (tdcAngles.isNotEmpty()) tdcAngles.average().toFloat() else null,
-            averageKneeAngleRange = if (kneeRanges.isNotEmpty()) kneeRanges.average().toFloat() else 0f,
-            averageHipAngle = if (hipAverages.isNotEmpty()) hipAverages.average().toFloat() else 0f,
-            averageTorsoAngle = if (torsoAverages.isNotEmpty()) torsoAverages.average().toFloat() else 0f,
-            averageCadenceRpm = if (cadences.isNotEmpty()) cadences.average().toFloat() else null,
-            kneeAngleAtBdcStats = AngleStats.fromValues(bdcAngles),
-            kneeAngleAtTdcStats = AngleStats.fromValues(tdcAngles),
-            hipAngleStats = AngleStats.fromValues(
-                completedCycles.flatMap { 
-                    listOf(it.hipAngle.min, it.hipAngle.average, it.hipAngle.max)
-                }
-            ),
-            torsoAngleStats = AngleStats.fromValues(
-                completedCycles.flatMap {
-                    listOf(it.torsoAngle.min, it.torsoAngle.average, it.torsoAngle.max)
-                }
-            ),
-            side = side
-        )
+    fun getSummary(applyOutlierFiltering: Boolean = true): CycleSummary {
+        return aggregateCycles(completedCycles, side, applyOutlierFiltering)
     }
 
     /**
@@ -307,28 +274,170 @@ class CycleAggregator(
         private const val MAX_CYCLE_DURATION_MS = 6000L
         // Minimum 40 degrees movement to count as a pedal stroke
         private const val MIN_KNEE_ROM_DEGREES = 40.0f
+        // IQR multiplier for outlier detection
+        private const val IQR_MULTIPLIER = 1.5f
+
+        /**
+         * Filters outliers from a list of cycles using the IQR method.
+         * 
+         * Uses the Interquartile Range (IQR) method to identify and remove
+         * cycles with extreme values in key metrics like knee angle at BDC,
+         * cadence, or knee range of motion.
+         * 
+         * @param cycles List of cycle metrics to filter
+         * @return Filtered list with outliers removed
+         */
+        fun filterOutliers(cycles: List<CycleMetrics>): List<CycleMetrics> {
+            if (cycles.size < 4) {
+                // Need at least 4 cycles to compute meaningful quartiles
+                return cycles
+            }
+
+            // Extract key metrics for outlier detection
+            val bdcAngles = cycles.mapNotNull { it.kneeAngleAtBdc }
+            val cadences = cycles.mapNotNull { it.cadenceRpm }
+            val kneeRanges = cycles.map { it.kneeAngle.range }
+
+            // Calculate outlier bounds for each metric
+            val bdcBounds = calculateOutlierBounds(bdcAngles)
+            val cadenceBounds = calculateOutlierBounds(cadences)
+            val rangeBounds = calculateOutlierBounds(kneeRanges)
+
+            // Filter cycles that are outliers in any key metric
+            return cycles.filter { cycle ->
+                val bdcOk = cycle.kneeAngleAtBdc?.let { 
+                    it >= bdcBounds.first && it <= bdcBounds.second 
+                } ?: true
+                
+                val cadenceOk = cycle.cadenceRpm?.let {
+                    it >= cadenceBounds.first && it <= cadenceBounds.second
+                } ?: true
+                
+                val rangeOk = cycle.kneeAngle.range >= rangeBounds.first && 
+                              cycle.kneeAngle.range <= rangeBounds.second
+
+                bdcOk && cadenceOk && rangeOk
+            }
+        }
+
+        /**
+         * Calculates outlier bounds using IQR method.
+         * Returns (lowerBound, upperBound).
+         */
+        private fun calculateOutlierBounds(values: List<Float>): Pair<Float, Float> {
+            if (values.size < 4) {
+                return Pair(Float.NEGATIVE_INFINITY, Float.POSITIVE_INFINITY)
+            }
+
+            val sorted = values.sorted()
+            val q1Index = (sorted.size * 0.25).toInt()
+            val q3Index = (sorted.size * 0.75).toInt()
+            
+            val q1 = sorted[q1Index]
+            val q3 = sorted[q3Index]
+            val iqr = q3 - q1
+            
+            val lowerBound = q1 - (IQR_MULTIPLIER * iqr)
+            val upperBound = q3 + (IQR_MULTIPLIER * iqr)
+            
+            return Pair(lowerBound, upperBound)
+        }
+
+        /**
+         * Calculates data quality score based on consistency and sample size.
+         * 
+         * @param cycles List of cycles to evaluate
+         * @return Quality score from 0 to 1
+         */
+        fun calculateDataQuality(cycles: List<CycleMetrics>): Float {
+            if (cycles.isEmpty()) return 0f
+            if (cycles.size < 3) return 0.3f // Low quality with few samples
+
+            // Calculate coefficient of variation for key metrics
+            val bdcAngles = cycles.mapNotNull { it.kneeAngleAtBdc }
+            val cadences = cycles.mapNotNull { it.cadenceRpm }
+
+            val bdcCV = if (bdcAngles.isNotEmpty()) {
+                calculateCoefficientOfVariation(bdcAngles)
+            } else {
+                1f // Poor if no BDC data
+            }
+
+            val cadenceCV = if (cadences.isNotEmpty()) {
+                calculateCoefficientOfVariation(cadences)
+            } else {
+                0.5f // Moderate if no cadence data
+            }
+
+            // Lower CV = better quality (more consistent)
+            // Typical good CV for angles: < 0.1 (10%)
+            // Typical good CV for cadence: < 0.05 (5%)
+            val bdcQuality = (1f - (bdcCV / 0.2f)).coerceIn(0f, 1f)
+            val cadenceQuality = (1f - (cadenceCV / 0.1f)).coerceIn(0f, 1f)
+
+            // Sample size factor: more cycles = better quality
+            val sampleQuality = (cycles.size / 10f).coerceIn(0f, 1f)
+
+            // Weighted average
+            return (bdcQuality * 0.4f + cadenceQuality * 0.4f + sampleQuality * 0.2f)
+        }
+
+        /**
+         * Calculates coefficient of variation (std dev / mean).
+         */
+        private fun calculateCoefficientOfVariation(values: List<Float>): Float {
+            if (values.isEmpty()) return 0f
+            
+            val mean = values.average().toFloat()
+            if (mean == 0f) return 0f
+            
+            val variance = values.map { (it - mean) * (it - mean) }.average().toFloat()
+            val stdDev = kotlin.math.sqrt(variance)
+            
+            return stdDev / kotlin.math.abs(mean)
+        }
 
         /**
          * Aggregates a list of CycleMetrics into a CycleSummary.
          * 
          * @param cycles List of cycle metrics to aggregate
          * @param side Body side for the summary
+         * @param applyOutlierFiltering Whether to filter outliers before aggregation
          * @return CycleSummary with aggregated statistics
          */
-        fun aggregateCycles(cycles: List<CycleMetrics>, side: BodySide): CycleSummary {
+        fun aggregateCycles(
+            cycles: List<CycleMetrics>, 
+            side: BodySide,
+            applyOutlierFiltering: Boolean = true
+        ): CycleSummary {
             if (cycles.isEmpty()) {
-                return CycleSummary.invalid(side)
+                return CycleSummary.Companion.invalid(side)
             }
 
-            val bdcAngles = cycles.mapNotNull { it.kneeAngleAtBdc }
-            val tdcAngles = cycles.mapNotNull { it.kneeAngleAtTdc }
-            val kneeRanges = cycles.map { it.kneeAngle.range }
-            val hipAverages = cycles.filter { it.hipAngle.isValid }.map { it.hipAngle.average }
-            val torsoAverages = cycles.filter { it.torsoAngle.isValid }.map { it.torsoAngle.average }
-            val cadences = cycles.mapNotNull { it.cadenceRpm }
+            val originalCount = cycles.size
+            val filteredCycles = if (applyOutlierFiltering) {
+                filterOutliers(cycles)
+            } else {
+                cycles
+            }
+            val outlierCount = originalCount - filteredCycles.size
+
+            if (filteredCycles.isEmpty()) {
+                // All cycles were outliers - return invalid
+                return CycleSummary.Companion.invalid(side)
+            }
+
+            val bdcAngles = filteredCycles.mapNotNull { it.kneeAngleAtBdc }
+            val tdcAngles = filteredCycles.mapNotNull { it.kneeAngleAtTdc }
+            val kneeRanges = filteredCycles.map { it.kneeAngle.range }
+            val hipAverages = filteredCycles.filter { it.hipAngle.isValid }.map { it.hipAngle.average }
+            val torsoAverages = filteredCycles.filter { it.torsoAngle.isValid }.map { it.torsoAngle.average }
+            val cadences = filteredCycles.mapNotNull { it.cadenceRpm }
+
+            val dataQuality = calculateDataQuality(filteredCycles)
 
             return CycleSummary(
-                cycleCount = cycles.size,
+                cycleCount = filteredCycles.size,
                 averageKneeAngleAtBdc = if (bdcAngles.isNotEmpty()) bdcAngles.average().toFloat() else null,
                 averageKneeAngleAtTdc = if (tdcAngles.isNotEmpty()) tdcAngles.average().toFloat() else null,
                 averageKneeAngleRange = if (kneeRanges.isNotEmpty()) kneeRanges.average().toFloat() else 0f,
@@ -338,16 +447,18 @@ class CycleAggregator(
                 kneeAngleAtBdcStats = AngleStats.fromValues(bdcAngles),
                 kneeAngleAtTdcStats = AngleStats.fromValues(tdcAngles),
                 hipAngleStats = AngleStats.fromValues(
-                    cycles.filter { it.hipAngle.isValid }.flatMap {
+                    filteredCycles.filter { it.hipAngle.isValid }.flatMap {
                         listOf(it.hipAngle.min, it.hipAngle.average, it.hipAngle.max)
                     }
                 ),
                 torsoAngleStats = AngleStats.fromValues(
-                    cycles.filter { it.torsoAngle.isValid }.flatMap {
+                    filteredCycles.filter { it.torsoAngle.isValid }.flatMap {
                         listOf(it.torsoAngle.min, it.torsoAngle.average, it.torsoAngle.max)
                     }
                 ),
-                side = side
+                side = side,
+                dataQuality = dataQuality,
+                outlierCount = outlierCount
             )
         }
     }
