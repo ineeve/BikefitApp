@@ -144,8 +144,12 @@ class CycleMetricsTest {
             kneeAngle = validKnee,
             hipAngle = AngleStats.INVALID,
             torsoAngle = AngleStats.INVALID,
+            ankleAngle = AngleStats.INVALID,
             kneeAngleAtBdc = null,
             kneeAngleAtTdc = null,
+            hipAngleAtTdc = null,
+            ankleAngleAtBdc = null,
+            kopsNormalized = null,
             side = BodySide.LEFT
         )
         assertTrue(metrics.isValid)
@@ -162,8 +166,12 @@ class CycleMetricsTest {
             kneeAngle = AngleStats.INVALID,
             hipAngle = AngleStats.INVALID,
             torsoAngle = AngleStats.INVALID,
+            ankleAngle = AngleStats.INVALID,
             kneeAngleAtBdc = null,
             kneeAngleAtTdc = null,
+            hipAngleAtTdc = null,
+            ankleAngleAtBdc = null,
+            kopsNormalized = null,
             side = BodySide.LEFT
         )
         assertFalse(metrics.isValid)
@@ -195,13 +203,17 @@ class CycleMetricsTest {
             averageKneeAngleAtBdc = 30f,
             averageKneeAngleAtTdc = 90f,
             averageKneeAngleRange = 60f,
-            averageHipAngle = 70f,
+            averageHipAngleAtTdc = 70f,
             averageTorsoAngle = 45f,
             averageCadenceRpm = 80f,
             kneeAngleAtBdcStats = AngleStats.INVALID,
             kneeAngleAtTdcStats = AngleStats.INVALID,
-            hipAngleStats = AngleStats.INVALID,
+            hipAngleAtTdcStats = AngleStats.INVALID,
             torsoAngleStats = AngleStats.INVALID,
+            averageAnkleAngleAtBdc = null,
+            ankleAngleAtBdcStats = AngleStats.INVALID,
+            averageKopsNormalized = null,
+            kopsNormalizedStats = AngleStats.INVALID,
             side = BodySide.LEFT
         )
         assertTrue(valid.isValid)
@@ -214,13 +226,17 @@ class CycleMetricsTest {
             averageKneeAngleAtBdc = 30f,
             averageKneeAngleAtTdc = 90f,
             averageKneeAngleRange = 60f,
-            averageHipAngle = 70f,
+            averageHipAngleAtTdc = 70f,
             averageTorsoAngle = 45f,
             averageCadenceRpm = 80f,
             kneeAngleAtBdcStats = AngleStats.INVALID,
             kneeAngleAtTdcStats = AngleStats.INVALID,
-            hipAngleStats = AngleStats.INVALID,
+            hipAngleAtTdcStats = AngleStats.INVALID,
             torsoAngleStats = AngleStats.INVALID,
+            averageAnkleAngleAtBdc = null,
+            ankleAngleAtBdcStats = AngleStats.INVALID,
+            averageKopsNormalized = null,
+            kopsNormalizedStats = AngleStats.INVALID,
             side = BodySide.LEFT,
             dataQuality = 0.8f
         )
@@ -234,13 +250,17 @@ class CycleMetricsTest {
             averageKneeAngleAtBdc = 30f,
             averageKneeAngleAtTdc = 90f,
             averageKneeAngleRange = 60f,
-            averageHipAngle = 70f,
+            averageHipAngleAtTdc = 70f,
             averageTorsoAngle = 45f,
             averageCadenceRpm = 80f,
             kneeAngleAtBdcStats = AngleStats.INVALID,
             kneeAngleAtTdcStats = AngleStats.INVALID,
-            hipAngleStats = AngleStats.INVALID,
+            hipAngleAtTdcStats = AngleStats.INVALID,
             torsoAngleStats = AngleStats.INVALID,
+            averageAnkleAngleAtBdc = null,
+            ankleAngleAtBdcStats = AngleStats.INVALID,
+            averageKopsNormalized = null,
+            kopsNormalizedStats = AngleStats.INVALID,
             side = BodySide.LEFT,
             dataQuality = 0.3f
         )
@@ -254,13 +274,17 @@ class CycleMetricsTest {
             averageKneeAngleAtBdc = 30f,
             averageKneeAngleAtTdc = 90f,
             averageKneeAngleRange = 60f,
-            averageHipAngle = 70f,
+            averageHipAngleAtTdc = 70f,
             averageTorsoAngle = 45f,
             averageCadenceRpm = 80f,
             kneeAngleAtBdcStats = AngleStats.INVALID,
             kneeAngleAtTdcStats = AngleStats.INVALID,
-            hipAngleStats = AngleStats.INVALID,
+            hipAngleAtTdcStats = AngleStats.INVALID,
             torsoAngleStats = AngleStats.INVALID,
+            averageAnkleAngleAtBdc = null,
+            ankleAngleAtBdcStats = AngleStats.INVALID,
+            averageKopsNormalized = null,
+            kopsNormalizedStats = AngleStats.INVALID,
             side = BodySide.LEFT,
             dataQuality = 0.8f
         )
@@ -285,8 +309,12 @@ class CycleMetricsTest {
             kneeAngle = AngleStats(min = 30f, max = 90f, average = 60f, sampleCount = 30),
             hipAngle = AngleStats(min = 65f, max = 75f, average = 70f, sampleCount = 30),
             torsoAngle = AngleStats(min = 40f, max = 50f, average = 45f, sampleCount = 30),
+            ankleAngle = AngleStats.INVALID,
             kneeAngleAtBdc = 30f,
             kneeAngleAtTdc = 90f,
+            hipAngleAtTdc = null,
+            ankleAngleAtBdc = null,
+            kopsNormalized = null,
             side = BodySide.LEFT
         )
     }

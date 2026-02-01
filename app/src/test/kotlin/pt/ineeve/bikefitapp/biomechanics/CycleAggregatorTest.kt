@@ -504,8 +504,12 @@ class CycleAggregatorTest {
             kneeAngle = AngleStats(min = bdcAngle, max = tdcAngle, average = (bdcAngle + tdcAngle) / 2, sampleCount = 30),
             hipAngle = AngleStats(min = 65f, max = 75f, average = 70f, sampleCount = 30),
             torsoAngle = AngleStats(min = 40f, max = 50f, average = 45f, sampleCount = 30),
+            ankleAngle = AngleStats.INVALID,
             kneeAngleAtBdc = bdcAngle,
             kneeAngleAtTdc = tdcAngle,
+            hipAngleAtTdc = null,
+            ankleAngleAtBdc = null,
+            kopsNormalized = null,
             side = BodySide.LEFT
         )
     }
@@ -665,8 +669,12 @@ class CycleAggregatorTest {
             kneeAngle = AngleStats(min = 30f, max = 90f, average = 60f, sampleCount = 30),
             hipAngle = AngleStats(min = 65f, max = 75f, average = 70f, sampleCount = 30),
             torsoAngle = AngleStats(min = 40f, max = 50f, average = 45f, sampleCount = 30),
+            ankleAngle = AngleStats.INVALID,
             kneeAngleAtBdc = 30f,
             kneeAngleAtTdc = 90f,
+            hipAngleAtTdc = null,
+            ankleAngleAtBdc = null,
+            kopsNormalized = null,
             side = BodySide.LEFT
         )
     }

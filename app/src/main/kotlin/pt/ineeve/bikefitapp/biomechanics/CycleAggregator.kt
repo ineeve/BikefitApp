@@ -7,8 +7,13 @@ internal data class CycleMeasurements(
     val kneeAngles: MutableList<Float> = mutableListOf(),
     val hipAngles: MutableList<Float> = mutableListOf(),
     val torsoAngles: MutableList<Float> = mutableListOf(),
+    val ankleAngles: MutableList<Float> = mutableListOf(),
+    val kopsValues: MutableList<Float> = mutableListOf(),
     var kneeAngleAtBdc: Float? = null,
     var kneeAngleAtTdc: Float? = null,
+    var hipAngleAtTdc: Float? = null,
+    var ankleAngleAtBdc: Float? = null,
+    var kopsAt3oClock: Float? = null,
     var startFrameNumber: Long = 0,
     var endFrameNumber: Long = 0,
     var startTimestampMs: Long = 0,
@@ -67,13 +72,17 @@ class CycleAggregator(
      * @param kneeAngle Current knee angle (may be null if not visible)
      * @param hipAngle Current hip angle (may be null if not visible)
      * @param torsoAngle Current torso angle (may be null if not visible)
+     * @param ankleAngle Current ankle angle (may be null if not visible)
+     * @param kopsNormalized Current KOPS normalized value (may be null if not visible)
      */
     fun addMeasurement(
         frameNumber: Long,
         timestampMs: Long,
         kneeAngle: Float? = null,
         hipAngle: Float? = null,
-        torsoAngle: Float? = null
+        torsoAngle: Float? = null,
+        ankleAngle: Float? = null,
+        kopsNormalized: Float? = null
     ) {
         // Initialize cycle start if this is the first measurement
         if (!cycleStarted) {
@@ -86,6 +95,8 @@ class CycleAggregator(
         kneeAngle?.let { currentMeasurements.kneeAngles.add(it) }
         hipAngle?.let { currentMeasurements.hipAngles.add(it) }
         torsoAngle?.let { currentMeasurements.torsoAngles.add(it) }
+        ankleAngle?.let { currentMeasurements.ankleAngles.add(it) }
+        kopsNormalized?.let { currentMeasurements.kopsValues.add(it) }
 
         // Update end frame/timestamp
         currentMeasurements.endFrameNumber = frameNumber
@@ -101,15 +112,18 @@ class CycleAggregator(
      * @param frameNumber Frame number at BDC
      * @param timestampMs Timestamp at BDC
      * @param kneeAngle Knee angle at BDC
+     * @param ankleAngle Ankle angle at BDC
      * @return Completed CycleMetrics, or null if this is the first BDC
      */
     fun endCycleAtBdc(
         frameNumber: Long,
         timestampMs: Long,
-        kneeAngle: Float?
+        kneeAngle: Float?,
+        ankleAngle: Float? = null
     ): CycleMetrics? {
-        // Record knee angle at BDC for current cycle
+        // Record angles at BDC for current cycle
         currentMeasurements.kneeAngleAtBdc = kneeAngle
+        currentMeasurements.ankleAngleAtBdc = ankleAngle
 
         // If we have accumulated measurements, complete the cycle
         val completed = if (cycleStarted && hasMeasurements()) {
@@ -128,9 +142,23 @@ class CycleAggregator(
      * Records top dead center in the current cycle.
      * 
      * @param kneeAngle Knee angle at TDC
+     * @param hipAngle Hip angle at TDC (minimum hip angle during cycle)
      */
-    fun recordTdc(kneeAngle: Float?) {
+    fun recordTdc(kneeAngle: Float?, hipAngle: Float? = null) {
         currentMeasurements.kneeAngleAtTdc = kneeAngle
+        currentMeasurements.hipAngleAtTdc = hipAngle
+    }
+
+    /**
+     * Records KOPS (Knee Over Pedal) measurement at 3 o'clock position.
+     * 
+     * @param kopsNormalized Normalized KOPS value (offset / femur length)
+     */
+    fun recordKopsAt3oClock(kopsNormalized: Float?) {
+        kopsNormalized?.let { 
+            currentMeasurements.kopsValues.add(it)
+            currentMeasurements.kopsAt3oClock = it 
+        }
     }
 
     /**
@@ -204,7 +232,8 @@ class CycleAggregator(
     private fun hasMeasurements(): Boolean {
         return currentMeasurements.kneeAngles.isNotEmpty() ||
                currentMeasurements.hipAngles.isNotEmpty() ||
-               currentMeasurements.torsoAngles.isNotEmpty()
+               currentMeasurements.torsoAngles.isNotEmpty() ||
+               currentMeasurements.ankleAngles.isNotEmpty()
     }
 
     /**
@@ -235,6 +264,13 @@ class CycleAggregator(
             return null // Discard cycle
         }
 
+        // Compute KOPS at 3 o'clock - use max value (when knee is most forward)
+        val kopsAt3oClock = if (currentMeasurements.kopsValues.isNotEmpty()) {
+            currentMeasurements.kopsValues.maxOrNull()
+        } else {
+            null
+        }
+
         val metrics = CycleMetrics(
             cycleNumber = cycleNumber,
             startFrameNumber = currentMeasurements.startFrameNumber,
@@ -244,8 +280,12 @@ class CycleAggregator(
             kneeAngle = kneeStats,
             hipAngle = AngleStats.fromValues(currentMeasurements.hipAngles),
             torsoAngle = AngleStats.fromValues(currentMeasurements.torsoAngles),
+            ankleAngle = AngleStats.fromValues(currentMeasurements.ankleAngles),
             kneeAngleAtBdc = currentMeasurements.kneeAngleAtBdc,
             kneeAngleAtTdc = currentMeasurements.kneeAngleAtTdc,
+            hipAngleAtTdc = currentMeasurements.hipAngleAtTdc,
+            ankleAngleAtBdc = currentMeasurements.ankleAngleAtBdc,
+            kopsNormalized = kopsAt3oClock,
             side = side
         )
 
@@ -414,6 +454,12 @@ class CycleAggregator(
         /**
          * Aggregates a list of CycleMetrics into a CycleSummary.
          * 
+         * Computes summary statistics for the four key bike fit metrics:
+         * - A. Knee Flexion/Extension at BDC (hip → knee → ankle)
+         * - B. Hip Angle at TDC (minimum hip angle during crank cycle)
+         * - C. Torso Angle (shoulder → hip relative to horizontal)
+         * - D. Ankle Angle at BDC (knee → ankle → foot index)
+         * 
          * @param cycles List of cycle metrics to aggregate
          * @param side Body side for the summary
          * @param applyOutlierFiltering Whether to filter outliers before aggregation
@@ -441,35 +487,47 @@ class CycleAggregator(
                 return CycleSummary.Companion.invalid(side)
             }
 
-            val bdcAngles = filteredCycles.mapNotNull { it.kneeAngleAtBdc }
-            val tdcAngles = filteredCycles.mapNotNull { it.kneeAngleAtTdc }
+            // A. Knee Flexion/Extension at BDC
+            val kneeBdcAngles = filteredCycles.mapNotNull { it.kneeAngleAtBdc }
+            val kneeTdcAngles = filteredCycles.mapNotNull { it.kneeAngleAtTdc }
             val kneeRanges = filteredCycles.map { it.kneeAngle.range }
-            val hipAverages = filteredCycles.filter { it.hipAngle.isValid }.map { it.hipAngle.average }
+            
+            // B. Hip Angle at TDC (minimum hip angle during crank cycle)
+            val hipTdcAngles = filteredCycles.mapNotNull { it.hipAngleAtTdc }
+            
+            // C. Torso Angle
             val torsoAverages = filteredCycles.filter { it.torsoAngle.isValid }.map { it.torsoAngle.average }
+            
+            // D. Ankle Angle at BDC
+            val ankleBdcAngles = filteredCycles.mapNotNull { it.ankleAngleAtBdc }
+            
+            // E. Knee Over Pedal (Normalized) at 3 o'clock
+            val kopsNormalizedValues = filteredCycles.mapNotNull { it.kopsNormalized }
+            
             val cadences = filteredCycles.mapNotNull { it.cadenceRpm }
 
             val dataQuality = calculateDataQuality(filteredCycles)
 
             return CycleSummary(
                 cycleCount = filteredCycles.size,
-                averageKneeAngleAtBdc = if (bdcAngles.isNotEmpty()) bdcAngles.average().toFloat() else null,
-                averageKneeAngleAtTdc = if (tdcAngles.isNotEmpty()) tdcAngles.average().toFloat() else null,
+                averageKneeAngleAtBdc = if (kneeBdcAngles.isNotEmpty()) kneeBdcAngles.average().toFloat() else null,
+                averageKneeAngleAtTdc = if (kneeTdcAngles.isNotEmpty()) kneeTdcAngles.average().toFloat() else null,
                 averageKneeAngleRange = if (kneeRanges.isNotEmpty()) kneeRanges.average().toFloat() else 0f,
-                averageHipAngle = if (hipAverages.isNotEmpty()) hipAverages.average().toFloat() else 0f,
+                averageHipAngleAtTdc = if (hipTdcAngles.isNotEmpty()) hipTdcAngles.average().toFloat() else null,
                 averageTorsoAngle = if (torsoAverages.isNotEmpty()) torsoAverages.average().toFloat() else 0f,
+                averageAnkleAngleAtBdc = if (ankleBdcAngles.isNotEmpty()) ankleBdcAngles.average().toFloat() else null,
+                averageKopsNormalized = if (kopsNormalizedValues.isNotEmpty()) kopsNormalizedValues.average().toFloat() else null,
                 averageCadenceRpm = if (cadences.isNotEmpty()) cadences.average().toFloat() else null,
-                kneeAngleAtBdcStats = AngleStats.fromValues(bdcAngles),
-                kneeAngleAtTdcStats = AngleStats.fromValues(tdcAngles),
-                hipAngleStats = AngleStats.fromValues(
-                    filteredCycles.filter { it.hipAngle.isValid }.flatMap {
-                        listOf(it.hipAngle.min, it.hipAngle.average, it.hipAngle.max)
-                    }
-                ),
+                kneeAngleAtBdcStats = AngleStats.fromValues(kneeBdcAngles),
+                kneeAngleAtTdcStats = AngleStats.fromValues(kneeTdcAngles),
+                hipAngleAtTdcStats = AngleStats.fromValues(hipTdcAngles),
                 torsoAngleStats = AngleStats.fromValues(
                     filteredCycles.filter { it.torsoAngle.isValid }.flatMap {
                         listOf(it.torsoAngle.min, it.torsoAngle.average, it.torsoAngle.max)
                     }
                 ),
+                ankleAngleAtBdcStats = AngleStats.fromValues(ankleBdcAngles),
+                kopsNormalizedStats = AngleStats.fromValues(kopsNormalizedValues),
                 side = side,
                 dataQuality = dataQuality,
                 outlierCount = outlierCount

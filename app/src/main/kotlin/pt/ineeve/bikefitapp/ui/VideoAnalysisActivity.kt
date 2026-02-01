@@ -394,9 +394,19 @@ class VideoAnalysisActivity : AppCompatActivity() {
         val torsoResult = TorsoAngleCalculator.calculateTorsoAngle(poseResult, side)
         val torsoAngle = if (torsoResult.isValid) torsoResult.angle else null
         
+        // Compute KOPS (Knee Over Pedal Spindle) normalized value
+        val poseFrame = PoseFrame(
+            frameNumber = frameNumber,
+            timestampMs = timestampMs,
+            landmarks = poseResult.landmarks,
+            confidence = poseResult.confidence
+        )
+        val kopsResult = KneeOverPedalOffset.computeAtFrame(poseFrame, side)
+        val kopsNormalized = if (kopsResult.isValid) kopsResult.normalizedOffset else null
+        
         val aggregator = if (side == BodySide.LEFT) leftCycleAggregator else rightCycleAggregator
         
-        aggregator.addMeasurement(frameNumber, timestampMs, kneeAngle, hipAngle, torsoAngle)
+        aggregator.addMeasurement(frameNumber, timestampMs, kneeAngle, hipAngle, torsoAngle, kopsNormalized = kopsNormalized)
         
         val events = pedalDetector.processAnklePosition(
             frameNumber = frameNumber,

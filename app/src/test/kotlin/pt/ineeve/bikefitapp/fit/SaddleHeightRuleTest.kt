@@ -371,8 +371,12 @@ class SaddleHeightRuleTest {
             ),
             hipAngle = AngleStats.INVALID,
             torsoAngle = AngleStats.INVALID,
+            ankleAngle = AngleStats.INVALID,
             kneeAngleAtBdc = kneeAngleAtBdc,
             kneeAngleAtTdc = 90f,
+            hipAngleAtTdc = null,
+            ankleAngleAtBdc = null,
+            kopsNormalized = null,
             side = BodySide.LEFT
         )
     }
@@ -385,15 +389,19 @@ class SaddleHeightRuleTest {
             averageKneeAngleAtBdc = averageKneeAngleAtBdc,
             averageKneeAngleAtTdc = 90f,
             averageKneeAngleRange = 60f,
-            averageHipAngle = 70f,
+            averageHipAngleAtTdc = 70f,
             averageTorsoAngle = 45f,
             averageCadenceRpm = 80f,
             kneeAngleAtBdcStats = AngleStats.fromValues(
                 if (averageKneeAngleAtBdc != null) listOf(averageKneeAngleAtBdc) else emptyList()
             ),
             kneeAngleAtTdcStats = AngleStats.INVALID,
-            hipAngleStats = AngleStats.INVALID,
+            hipAngleAtTdcStats = AngleStats.INVALID,
             torsoAngleStats = AngleStats.INVALID,
+            averageAnkleAngleAtBdc = null,
+            ankleAngleAtBdcStats = AngleStats.INVALID,
+            averageKopsNormalized = null,
+            kopsNormalizedStats = AngleStats.INVALID,
             side = BodySide.LEFT
         )
     }

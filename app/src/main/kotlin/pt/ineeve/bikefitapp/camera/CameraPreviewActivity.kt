@@ -21,6 +21,7 @@ import pt.ineeve.bikefitapp.biomechanics.CycleSummary
 import pt.ineeve.bikefitapp.biomechanics.KneeAngleCalculator
 import pt.ineeve.bikefitapp.biomechanics.HipAngleCalculator
 import pt.ineeve.bikefitapp.biomechanics.TorsoAngleCalculator
+import pt.ineeve.bikefitapp.biomechanics.KneeOverPedalOffset
 import pt.ineeve.bikefitapp.calibration.BikeCalibration
 import pt.ineeve.bikefitapp.calibration.CalibrationActivity
 import pt.ineeve.bikefitapp.calibration.CalibrationRepository
@@ -30,6 +31,7 @@ import pt.ineeve.bikefitapp.fit.FitSummary
 import pt.ineeve.bikefitapp.pose.PoseLandmarkerWrapper
 import pt.ineeve.bikefitapp.pose.PoseResult
 import pt.ineeve.bikefitapp.pose.PoseLandmarkIndex
+import pt.ineeve.bikefitapp.pose.PoseFrame
 import pt.ineeve.bikefitapp.ui.AngleDisplay
 import pt.ineeve.bikefitapp.ui.AnalysisStatus
 import pt.ineeve.bikefitapp.ui.AnalysisStatusView
@@ -463,6 +465,16 @@ class CameraPreviewActivity : AppCompatActivity() {
         // Calculate torso angle
         val torsoResult = TorsoAngleCalculator.calculateTorsoAngle(poseResult, side)
         val torsoAngle = if (torsoResult.isValid) torsoResult.angle else null
+        
+        // Compute KOPS (Knee Over Pedal Spindle) normalized value
+        val poseFrame = PoseFrame(
+            frameNumber = frameNumber,
+            timestampMs = timestampMs,
+            landmarks = poseResult.landmarks,
+            confidence = poseResult.confidence
+        )
+        val kopsResult = KneeOverPedalOffset.computeAtFrame(poseFrame, side)
+        val kopsNormalized = if (kopsResult.isValid) kopsResult.normalizedOffset else null
 
         // Feed aggregator
         val aggregator = if (side == BodySide.LEFT) leftCycleAggregator else rightCycleAggregator
@@ -471,7 +483,8 @@ class CameraPreviewActivity : AppCompatActivity() {
             timestampMs = timestampMs,
             kneeAngle = kneeAngle,
             hipAngle = hipAngle,
-            torsoAngle = torsoAngle
+            torsoAngle = torsoAngle,
+            kopsNormalized = kopsNormalized
         )
 
         // Detect cycles via ankle position

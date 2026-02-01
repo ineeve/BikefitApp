@@ -44,22 +44,28 @@ class FitSummaryActivity : AppCompatActivity() {
     private lateinit var recommendationsRecycler: RecyclerView
     private lateinit var emptyState: View
 
-    // Metrics table views
+    // Metrics table views for the 4 key bike fit metrics:
+    // A. Knee Flexion/Extension at BDC
+    // B. Hip Angle at TDC
+    // C. Torso Angle
+    // D. Ankle Angle at BDC
     private lateinit var metricsCard: MaterialCardView
-    private lateinit var metricExtensionValue: TextView
-    private lateinit var metricExtensionRange: TextView
-    private lateinit var metricExtensionStats: TextView
-    private lateinit var metricFlexionValue: TextView
-    private lateinit var metricFlexionRange: TextView
-    private lateinit var metricFlexionStats: TextView
-    private lateinit var metricHipValue: TextView
-    private lateinit var metricHipRange: TextView
-    private lateinit var metricHipStats: TextView
+    private lateinit var metricKneeBdcValue: TextView
+    private lateinit var metricKneeBdcRange: TextView
+    private lateinit var metricKneeBdcStats: TextView
+    private lateinit var metricHipTdcValue: TextView
+    private lateinit var metricHipTdcRange: TextView
+    private lateinit var metricHipTdcStats: TextView
     private lateinit var metricTorsoValue: TextView
     private lateinit var metricTorsoRange: TextView
     private lateinit var metricTorsoStats: TextView
+    private lateinit var metricAnkleBdcValue: TextView
+    private lateinit var metricAnkleBdcRange: TextView
+    private lateinit var metricAnkleBdcStats: TextView
+    // E. Knee Over Pedal (Normalized)
     private lateinit var metricKopsValue: TextView
     private lateinit var metricKopsRange: TextView
+    private lateinit var metricKopsStats: TextView
     
     // Additional stats views
     private lateinit var cadenceValue: TextView
@@ -89,22 +95,28 @@ class FitSummaryActivity : AppCompatActivity() {
         gradeSummary = findViewById(R.id.grade_summary)
         issueCount = findViewById(R.id.issue_count)
         
-        // Metrics Views
+        // Metrics Views - 4 key bike fit metrics
         metricsCard = findViewById(R.id.metrics_card)
-        metricExtensionValue = findViewById(R.id.metric_extension_value)
-        metricExtensionRange = findViewById(R.id.metric_extension_range)
-        metricExtensionStats = findViewById(R.id.metric_extension_stats)
-        metricFlexionValue = findViewById(R.id.metric_flexion_value)
-        metricFlexionRange = findViewById(R.id.metric_flexion_range)
-        metricFlexionStats = findViewById(R.id.metric_flexion_stats)
-        metricHipValue = findViewById(R.id.metric_hip_value)
-        metricHipRange = findViewById(R.id.metric_hip_range)
-        metricHipStats = findViewById(R.id.metric_hip_stats)
+        // A. Knee Flexion/Extension at BDC
+        metricKneeBdcValue = findViewById(R.id.metric_knee_bdc_value)
+        metricKneeBdcRange = findViewById(R.id.metric_knee_bdc_range)
+        metricKneeBdcStats = findViewById(R.id.metric_knee_bdc_stats)
+        // B. Hip Angle at TDC
+        metricHipTdcValue = findViewById(R.id.metric_hip_tdc_value)
+        metricHipTdcRange = findViewById(R.id.metric_hip_tdc_range)
+        metricHipTdcStats = findViewById(R.id.metric_hip_tdc_stats)
+        // C. Torso Angle
         metricTorsoValue = findViewById(R.id.metric_torso_value)
         metricTorsoRange = findViewById(R.id.metric_torso_range)
         metricTorsoStats = findViewById(R.id.metric_torso_stats)
+        // D. Ankle Angle at BDC
+        metricAnkleBdcValue = findViewById(R.id.metric_ankle_bdc_value)
+        metricAnkleBdcRange = findViewById(R.id.metric_ankle_bdc_range)
+        metricAnkleBdcStats = findViewById(R.id.metric_ankle_bdc_stats)
+        // E. Knee Over Pedal (Normalized)
         metricKopsValue = findViewById(R.id.metric_kops_value)
         metricKopsRange = findViewById(R.id.metric_kops_range)
+        metricKopsStats = findViewById(R.id.metric_kops_stats)
         
         // Additional stats
         cadenceValue = findViewById(R.id.cadence_value)
@@ -164,52 +176,37 @@ class FitSummaryActivity : AppCompatActivity() {
             return
         }
         
-        // Knee Extension at BDC - showing full stats
-        val bdcStats = metrics.kneeAngleAtBdcStats
-        if (bdcStats.isValid) {
-            metricExtensionValue.text = "%.1f°".format(metrics.averageKneeAngleAtBdc ?: 0f)
-            metricExtensionRange.text = "145° - 155°"
-            metricExtensionStats.text = "Min: %.1f° | Max: %.1f° | SD: %.1f°".format(
-                bdcStats.min, bdcStats.max, bdcStats.standardDeviation
+        // A. Knee Flexion/Extension at BDC (hip → knee → ankle)
+        val kneeBdcStats = metrics.kneeAngleAtBdcStats
+        if (kneeBdcStats.isValid) {
+            metricKneeBdcValue.text = "%.1f°".format(metrics.averageKneeAngleAtBdc ?: 0f)
+            metricKneeBdcRange.text = "145° - 155°"
+            metricKneeBdcStats.text = "Min: %.1f° | Max: %.1f° | SD: %.1f°".format(
+                kneeBdcStats.min, kneeBdcStats.max, kneeBdcStats.standardDeviation
             )
-            metricExtensionStats.visibility = View.VISIBLE
+            metricKneeBdcStats.visibility = View.VISIBLE
         } else {
-            metricExtensionValue.text = "--"
-            metricExtensionRange.text = "145° - 155°"
-            metricExtensionStats.visibility = View.GONE
+            metricKneeBdcValue.text = "--"
+            metricKneeBdcRange.text = "145° - 155°"
+            metricKneeBdcStats.visibility = View.GONE
         }
         
-        // Knee Flexion at TDC - showing full stats
-        val tdcStats = metrics.kneeAngleAtTdcStats
-        if (tdcStats.isValid) {
-            metricFlexionValue.text = "%.1f°".format(metrics.averageKneeAngleAtTdc ?: 0f)
-            metricFlexionRange.text = "70° - 110°"
-            metricFlexionStats.text = "Min: %.1f° | Max: %.1f° | SD: %.1f°".format(
-                tdcStats.min, tdcStats.max, tdcStats.standardDeviation
+        // B. Hip Angle at TDC (shoulder/torso → hip → knee) - minimum hip angle
+        val hipTdcStats = metrics.hipAngleAtTdcStats
+        if (hipTdcStats.isValid) {
+            metricHipTdcValue.text = "%.1f°".format(metrics.averageHipAngleAtTdc ?: 0f)
+            metricHipTdcRange.text = "40° - 70°"
+            metricHipTdcStats.text = "Min: %.1f° | Max: %.1f° | SD: %.1f°".format(
+                hipTdcStats.min, hipTdcStats.max, hipTdcStats.standardDeviation
             )
-            metricFlexionStats.visibility = View.VISIBLE
+            metricHipTdcStats.visibility = View.VISIBLE
         } else {
-            metricFlexionValue.text = "--"
-            metricFlexionRange.text = "70° - 110°"
-            metricFlexionStats.visibility = View.GONE
+            metricHipTdcValue.text = "--"
+            metricHipTdcRange.text = "40° - 70°"
+            metricHipTdcStats.visibility = View.GONE
         }
         
-        // Hip Angle - showing full stats
-        val hipStats = metrics.hipAngleStats
-        if (hipStats.isValid) {
-            metricHipValue.text = "%.1f°".format(metrics.averageHipAngle)
-            metricHipRange.text = "90° - 110°"
-            metricHipStats.text = "Min: %.1f° | Max: %.1f° | SD: %.1f°".format(
-                hipStats.min, hipStats.max, hipStats.standardDeviation
-            )
-            metricHipStats.visibility = View.VISIBLE
-        } else {
-            metricHipValue.text = "--"
-            metricHipRange.text = "90° - 110°"
-            metricHipStats.visibility = View.GONE
-        }
-        
-        // Torso Angle - showing full stats
+        // C. Torso Angle (shoulder → hip relative to horizontal)
         val torsoStats = metrics.torsoAngleStats
         if (torsoStats.isValid) {
             metricTorsoValue.text = "%.1f°".format(metrics.averageTorsoAngle)
@@ -224,9 +221,35 @@ class FitSummaryActivity : AppCompatActivity() {
             metricTorsoStats.visibility = View.GONE
         }
         
-        // KOPS - TODO: Add when KOPS data is available in CycleSummary
-        metricKopsValue.text = "--"
-        metricKopsRange.text = "±3%"
+        // D. Ankle Angle at BDC (knee → ankle → foot index)
+        val ankleBdcStats = metrics.ankleAngleAtBdcStats
+        if (ankleBdcStats.isValid) {
+            metricAnkleBdcValue.text = "%.1f°".format(metrics.averageAnkleAngleAtBdc ?: 0f)
+            metricAnkleBdcRange.text = "80° - 110°"
+            metricAnkleBdcStats.text = "Min: %.1f° | Max: %.1f° | SD: %.1f°".format(
+                ankleBdcStats.min, ankleBdcStats.max, ankleBdcStats.standardDeviation
+            )
+            metricAnkleBdcStats.visibility = View.VISIBLE
+        } else {
+            metricAnkleBdcValue.text = "--"
+            metricAnkleBdcRange.text = "80° - 110°"
+            metricAnkleBdcStats.visibility = View.GONE
+        }
+        
+        // E. Knee Over Pedal (Normalized) - ratio of knee offset to femur length
+        val kopsStats = metrics.kopsNormalizedStats
+        if (kopsStats.isValid) {
+            metricKopsValue.text = "%.2f".format(metrics.averageKopsNormalized ?: 0f)
+            metricKopsRange.text = "-0.1 - 0.1"
+            metricKopsStats.text = "Min: %.2f | Max: %.2f | SD: %.2f".format(
+                kopsStats.min, kopsStats.max, kopsStats.standardDeviation
+            )
+            metricKopsStats.visibility = View.VISIBLE
+        } else {
+            metricKopsValue.text = "--"
+            metricKopsRange.text = "-0.1 - 0.1"
+            metricKopsStats.visibility = View.GONE
+        }
         
         // Cadence
         metrics.averageCadenceRpm?.let { cadence ->

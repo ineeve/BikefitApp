@@ -3,6 +3,17 @@
 ## Overview
 The biomechanics module is the mathematical core of BikefitApp. It consumes streams of `PoseFrame` data and produces comprehensive `CycleMetrics` through angle calculations, cycle detection, and statistical aggregation. This module is completely independent of camera, UI, and Android framework dependencies—all functions are pure and highly testable.
 
+## Key Metrics
+
+The biomechanical analysis focuses on **four key metrics**:
+
+| Metric | Landmarks | Description |
+|--------|-----------|-------------|
+| **A. Knee Flexion/Extension (BDC)** | hip → knee → ankle | Knee angle at bottom dead center |
+| **B. Hip Angle (TDC)** | shoulder/torso → hip → knee | Minimum hip angle during crank cycle |
+| **C. Torso Angle** | shoulder → hip relative to horizontal | Back angle measurement |
+| **D. Ankle Angle (BDC)** | knee → ankle → foot index | Ankle flexion at bottom dead center |
+
 ## Architecture
 
 **Data Flow:**
@@ -216,19 +227,46 @@ The biomechanics module operates on **normalized MediaPipe coordinates** (0-1 ra
 ## Data Models
 
 ### CycleMetrics
-**File:** [CycleMetrics.kt](CycleMetrics.kt) (232 lines)
+**File:** [CycleMetrics.kt](CycleMetrics.kt)
 
-Complete cycle data with per-metric statistics.
+Complete cycle data with per-metric statistics for the four key bike fit metrics.
 
 ```kotlin
 data class CycleMetrics(
-    val kneeAngle: AngleStats,
-    val hipAngle: AngleStats,
-    val ankleAngle: AngleStats,
-    val torsoAngle: AngleStats,
     val cycleNumber: Int,
-    val frameCount: Int,
-    val timestamp: Long
+    val startFrameNumber: Long,
+    val endFrameNumber: Long,
+    val startTimestampMs: Long,
+    val endTimestampMs: Long,
+    val kneeAngle: AngleStats,           // General knee angle stats
+    val hipAngle: AngleStats,            // General hip angle stats
+    val torsoAngle: AngleStats,          // C. Torso angle stats
+    val ankleAngle: AngleStats,          // General ankle angle stats
+    val kneeAngleAtBdc: Float?,          // A. Knee angle at BDC
+    val kneeAngleAtTdc: Float?,          // Knee angle at TDC
+    val hipAngleAtTdc: Float?,           // B. Hip angle at TDC (minimum)
+    val ankleAngleAtBdc: Float?,         // D. Ankle angle at BDC
+    val side: BodySide
+)
+```
+
+### CycleSummary
+
+Aggregated statistics across multiple pedal cycles for the four key metrics.
+
+```kotlin
+data class CycleSummary(
+    val cycleCount: Int,
+    val averageKneeAngleAtBdc: Float?,   // A. Knee Flexion/Extension at BDC
+    val averageHipAngleAtTdc: Float?,    // B. Hip Angle at TDC
+    val averageTorsoAngle: Float,        // C. Torso Angle
+    val averageAnkleAngleAtBdc: Float?,  // D. Ankle Angle at BDC
+    val kneeAngleAtBdcStats: AngleStats,
+    val hipAngleAtTdcStats: AngleStats,
+    val torsoAngleStats: AngleStats,
+    val ankleAngleAtBdcStats: AngleStats,
+    val side: BodySide,
+    val dataQuality: Float
 )
 ```
 

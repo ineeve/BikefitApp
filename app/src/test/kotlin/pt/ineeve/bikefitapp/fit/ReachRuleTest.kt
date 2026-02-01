@@ -222,8 +222,12 @@ class ReachRuleTest {
             kneeAngle = AngleStats.INVALID,
             hipAngle = AngleStats.INVALID,
             torsoAngle = AngleStats.INVALID,
+            ankleAngle = AngleStats.INVALID,
             kneeAngleAtBdc = null,
             kneeAngleAtTdc = null,
+            hipAngleAtTdc = null,
+            ankleAngleAtBdc = null,
+            kopsNormalized = null,
             side = BodySide.LEFT
         )
         val issues = rule.analyze(cycle)
@@ -418,8 +422,12 @@ class ReachRuleTest {
                 average = torsoAngle,
                 sampleCount = 30
             ),
+            ankleAngle = AngleStats.INVALID,
             kneeAngleAtBdc = null,
             kneeAngleAtTdc = null,
+            hipAngleAtTdc = null,
+            ankleAngleAtBdc = null,
+            kopsNormalized = null,
             side = BodySide.LEFT
         )
     }
@@ -430,18 +438,22 @@ class ReachRuleTest {
             averageKneeAngleAtBdc = 150f,
             averageKneeAngleAtTdc = 90f,
             averageKneeAngleRange = 60f,
-            averageHipAngle = 70f,
+            averageHipAngleAtTdc = 70f,
             averageTorsoAngle = averageTorsoAngle,
             averageCadenceRpm = 80f,
             kneeAngleAtBdcStats = AngleStats.INVALID,
             kneeAngleAtTdcStats = AngleStats.INVALID,
-            hipAngleStats = AngleStats.INVALID,
+            hipAngleAtTdcStats = AngleStats.INVALID,
             torsoAngleStats = AngleStats(
                 min = averageTorsoAngle - 5,
                 max = averageTorsoAngle + 5,
                 average = averageTorsoAngle,
                 sampleCount = 100
             ),
+            averageAnkleAngleAtBdc = null,
+            ankleAngleAtBdcStats = AngleStats.INVALID,
+            averageKopsNormalized = null,
+            kopsNormalizedStats = AngleStats.INVALID,
             side = BodySide.LEFT
         )
     }

@@ -353,13 +353,17 @@ class FitEngineTest {
             averageKneeAngleAtBdc = 150f,
             averageKneeAngleAtTdc = 80f,
             averageKneeAngleRange = 70f,
-            averageHipAngle = 100f,
+            averageHipAngleAtTdc = 100f,
             averageTorsoAngle = 45f, // Optimal, won't trigger from summary
             averageCadenceRpm = 90f,
             kneeAngleAtBdcStats = AngleStats(145f, 155f, 150f, 10),
             kneeAngleAtTdcStats = AngleStats(75f, 85f, 80f, 10),
-            hipAngleStats = AngleStats(95f, 105f, 100f, 10),
+            hipAngleAtTdcStats = AngleStats(95f, 105f, 100f, 10),
             torsoAngleStats = AngleStats(40f, 50f, 45f, 10),
+            averageAnkleAngleAtBdc = null,
+            ankleAngleAtBdcStats = AngleStats.INVALID,
+            averageKopsNormalized = null,
+            kopsNormalizedStats = AngleStats.INVALID,
             side = BodySide.LEFT
         )
 
@@ -393,13 +397,17 @@ class FitEngineTest {
                 averageKneeAngleAtBdc = 165f, // Too high
                 averageKneeAngleAtTdc = 80f,
                 averageKneeAngleRange = 85f,
-                averageHipAngle = 100f,
+                averageHipAngleAtTdc = 100f,
                 averageTorsoAngle = 20f, // Too aggressive
                 averageCadenceRpm = 90f,
                 kneeAngleAtBdcStats = AngleStats(160f, 170f, 165f, 10),
                 kneeAngleAtTdcStats = AngleStats(75f, 85f, 80f, 10),
-                hipAngleStats = AngleStats(95f, 105f, 100f, 10),
+                hipAngleAtTdcStats = AngleStats(95f, 105f, 100f, 10),
                 torsoAngleStats = AngleStats(15f, 25f, 20f, 10),
+                averageAnkleAngleAtBdc = null,
+                ankleAngleAtBdcStats = AngleStats.INVALID,
+                averageKopsNormalized = null,
+                kopsNormalizedStats = AngleStats.INVALID,
                 side = BodySide.LEFT
             ),
             hipRockingResult = HipRockingResult(
@@ -428,13 +436,17 @@ class FitEngineTest {
                 averageKneeAngleAtBdc = 157f, // Just outside optimal, MEDIUM
                 averageKneeAngleAtTdc = 80f,
                 averageKneeAngleRange = 77f,
-                averageHipAngle = 100f,
+                averageHipAngleAtTdc = 100f,
                 averageTorsoAngle = 20f, // Very aggressive, HIGH
                 averageCadenceRpm = 90f,
                 kneeAngleAtBdcStats = AngleStats(155f, 160f, 157f, 10),
                 kneeAngleAtTdcStats = AngleStats(75f, 85f, 80f, 10),
-                hipAngleStats = AngleStats(95f, 105f, 100f, 10),
+                hipAngleAtTdcStats = AngleStats(95f, 105f, 100f, 10),
                 torsoAngleStats = AngleStats(15f, 25f, 20f, 10),
+                averageAnkleAngleAtBdc = null,
+                ankleAngleAtBdcStats = AngleStats.INVALID,
+                averageKopsNormalized = null,
+                kopsNormalizedStats = AngleStats.INVALID,
                 side = BodySide.LEFT
             )
         )
@@ -528,8 +540,12 @@ class FitEngineTest {
             kneeAngle = AngleStats(140f, 165f, 155f, 30),
             hipAngle = AngleStats(95f, 105f, 100f, 30),
             torsoAngle = AngleStats(40f, 50f, 45f, 30),
+            ankleAngle = AngleStats.INVALID,
             kneeAngleAtBdc = 165f, // Too high
             kneeAngleAtTdc = 80f,
+            hipAngleAtTdc = null,
+            ankleAngleAtBdc = null,
+            kopsNormalized = null,
             side = BodySide.LEFT
         )
 
@@ -548,8 +564,12 @@ class FitEngineTest {
             kneeAngle = AngleStats(145f, 155f, 150f, 30),
             hipAngle = AngleStats(95f, 105f, 100f, 30),
             torsoAngle = AngleStats(40f, 50f, 45f, 30),
+            ankleAngle = AngleStats.INVALID,
             kneeAngleAtBdc = 150f, // Optimal
             kneeAngleAtTdc = 80f,
+            hipAngleAtTdc = null,
+            ankleAngleAtBdc = null,
+            kopsNormalized = null,
             side = BodySide.LEFT
         )
 
@@ -687,13 +707,17 @@ class FitEngineTest {
             averageKneeAngleAtBdc = 150f, // Optimal
             averageKneeAngleAtTdc = 80f,
             averageKneeAngleRange = 70f,
-            averageHipAngle = 100f,
+            averageHipAngleAtTdc = 100f,
             averageTorsoAngle = 45f, // Optimal
             averageCadenceRpm = 90f,
             kneeAngleAtBdcStats = AngleStats(145f, 155f, 150f, 10),
             kneeAngleAtTdcStats = AngleStats(75f, 85f, 80f, 10),
-            hipAngleStats = AngleStats(95f, 105f, 100f, 10),
+            hipAngleAtTdcStats = AngleStats(95f, 105f, 100f, 10),
             torsoAngleStats = AngleStats(40f, 50f, 45f, 10),
+            averageAnkleAngleAtBdc = null,
+            ankleAngleAtBdcStats = AngleStats.INVALID,
+            averageKopsNormalized = null,
+            kopsNormalizedStats = AngleStats.INVALID,
             side = BodySide.LEFT
         )
     }
@@ -707,13 +731,17 @@ class FitEngineTest {
             averageKneeAngleAtBdc = kneeAngleAtBdc,
             averageKneeAngleAtTdc = 80f,
             averageKneeAngleRange = kneeAngleAtBdc - 80f,
-            averageHipAngle = 100f,
+            averageHipAngleAtTdc = 100f,
             averageTorsoAngle = 45f,
             averageCadenceRpm = 90f,
             kneeAngleAtBdcStats = AngleStats(kneeAngleAtBdc - 5, kneeAngleAtBdc + 5, kneeAngleAtBdc, 10),
             kneeAngleAtTdcStats = AngleStats(75f, 85f, 80f, 10),
-            hipAngleStats = AngleStats(95f, 105f, 100f, 10),
+            hipAngleAtTdcStats = AngleStats(95f, 105f, 100f, 10),
             torsoAngleStats = AngleStats(40f, 50f, 45f, 10),
+            averageAnkleAngleAtBdc = null,
+            ankleAngleAtBdcStats = AngleStats.INVALID,
+            averageKopsNormalized = null,
+            kopsNormalizedStats = AngleStats.INVALID,
             side = BodySide.LEFT
         )
     }
@@ -727,13 +755,17 @@ class FitEngineTest {
             averageKneeAngleAtBdc = 150f,
             averageKneeAngleAtTdc = 80f,
             averageKneeAngleRange = 70f,
-            averageHipAngle = 100f,
+            averageHipAngleAtTdc = 100f,
             averageTorsoAngle = torsoAngle,
             averageCadenceRpm = 90f,
             kneeAngleAtBdcStats = AngleStats(145f, 155f, 150f, 10),
             kneeAngleAtTdcStats = AngleStats(75f, 85f, 80f, 10),
-            hipAngleStats = AngleStats(95f, 105f, 100f, 10),
+            hipAngleAtTdcStats = AngleStats(95f, 105f, 100f, 10),
             torsoAngleStats = AngleStats(torsoAngle - 5, torsoAngle + 5, torsoAngle, 10),
+            averageAnkleAngleAtBdc = null,
+            ankleAngleAtBdcStats = AngleStats.INVALID,
+            averageKopsNormalized = null,
+            kopsNormalizedStats = AngleStats.INVALID,
             side = BodySide.LEFT
         )
     }

@@ -218,7 +218,7 @@
                         android:background="#DDDDDD"
                         android:layout_marginVertical="8dp"/>
 
-                    <!-- Max Extension Row -->
+                    <!-- A. Knee Flexion/Extension at BDC Row -->
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -234,32 +234,32 @@
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1.3"
-                                android:text="Knee Extension"
+                                android:text="Knee Angle (BDC)"
                                 android:textSize="14sp" />
                                 
                             <TextView
-                                android:id="@+id/metric_extension_value"
+                                android:id="@+id/metric_knee_bdc_value"
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
                                 android:gravity="center"
                                 android:textStyle="bold"
                                 android:textSize="14sp"
-                                tools:text="138°" />
+                                tools:text="148°" />
                                 
                             <TextView
-                                android:id="@+id/metric_extension_range"
+                                android:id="@+id/metric_knee_bdc_range"
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
                                 android:gravity="center"
                                 android:textColor="#666666"
                                 android:textSize="14sp"
-                                tools:text="140°-150°" />
+                                tools:text="145°-155°" />
                         </LinearLayout>
                         
                         <TextView
-                            android:id="@+id/metric_extension_stats"
+                            android:id="@+id/metric_knee_bdc_stats"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
@@ -267,11 +267,11 @@
                             android:textSize="11sp"
                             android:textColor="#666666"
                             android:visibility="gone"
-                            tools:text="Min: 135° | Max: 142° | SD: 3.2°"
+                            tools:text="Min: 145° | Max: 152° | SD: 3.2°"
                             tools:visibility="visible" />
                     </LinearLayout>
 
-                    <!-- Min Flexion Row -->
+                    <!-- B. Hip Angle at TDC Row -->
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -287,130 +287,43 @@
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1.3"
-                                android:text="Knee Flexion"
+                                android:text="Hip Angle (TDC)"
                                 android:textSize="14sp" />
                                 
                             <TextView
-                                android:id="@+id/metric_flexion_value"
+                                android:id="@+id/metric_hip_tdc_value"
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
                                 android:gravity="center"
                                 android:textStyle="bold"
                                 android:textSize="14sp"
-                                tools:text="72°" />
+                                tools:text="55°" />
                                 
                             <TextView
-                                android:id="@+id/metric_flexion_range"
+                                android:id="@+id/metric_hip_tdc_range"
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
                                 android:gravity="center"
                                 android:textColor="#666666"
                                 android:textSize="14sp"
-                                tools:text="70°-110°" />
+                                tools:text="40°-70°" />
                         </LinearLayout>
                         
                         <TextView
-                            android:id="@+id/metric_flexion_stats"
+                            android:id="@+id/metric_hip_tdc_stats"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
                             android:textSize="11sp"
                             android:textColor="#666666"
                             android:visibility="gone"
-                            tools:text="Min: 68° | Max: 76° | SD: 2.8°"
+                            tools:text="Min: 48° | Max: 62° | SD: 2.8°"
                             tools:visibility="visible" />
                     </LinearLayout>
 
-                    <!-- KOPS Row -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:paddingVertical="4dp"
-                        android:orientation="horizontal">
-                        
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1.3"
-                            android:text="Knee fwd of Pedal"
-                            android:textSize="14sp" />
-                            
-                        <TextView
-                            android:id="@+id/metric_kops_value"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:gravity="center"
-                            android:textStyle="bold"
-                            android:textSize="14sp"
-                            tools:text="+12mm" />
-                            
-                        <TextView
-                            android:id="@+id/metric_kops_range"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:gravity="center"
-                            android:textColor="#666666"
-                            android:textSize="14sp"
-                            tools:text="±10mm" />
-                    </LinearLayout>
-
-                     <!-- Hip Angle Row -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:paddingVertical="4dp"
-                        android:orientation="vertical">
-                        
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal">
-                            
-                            <TextView
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1.3"
-                                android:text="Hip Angle"
-                                android:textSize="14sp" />
-                                
-                            <TextView
-                                android:id="@+id/metric_hip_value"
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:gravity="center"
-                                android:textStyle="bold"
-                                android:textSize="14sp"
-                                tools:text="100°" />
-                                
-                            <TextView
-                                android:id="@+id/metric_hip_range"
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:gravity="center"
-                                android:textColor="#666666"
-                                android:textSize="14sp"
-                                tools:text="90°-120°" />
-                        </LinearLayout>
-                        
-                        <TextView
-                            android:id="@+id/metric_hip_stats"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:textSize="11sp"
-                            android:textColor="#666666"
-                            android:visibility="gone"
-                            tools:text="Min: 95° | Max: 105° | SD: 3.1°"
-                            tools:visibility="visible" />
-                    </LinearLayout>
-
-                     <!-- Torso Angle Row -->
+                     <!-- C. Torso Angle Row -->
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -459,6 +372,110 @@
                             android:textColor="#666666"
                             android:visibility="gone"
                             tools:text="Min: 42° | Max: 48° | SD: 2.0°"
+                            tools:visibility="visible" />
+                    </LinearLayout>
+
+                     <!-- D. Ankle Angle at BDC Row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingVertical="4dp"
+                        android:orientation="vertical">
+                        
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
+                            
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1.3"
+                                android:text="Ankle Angle (BDC)"
+                                android:textSize="14sp" />
+                                
+                            <TextView
+                                android:id="@+id/metric_ankle_bdc_value"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:gravity="center"
+                                android:textStyle="bold"
+                                android:textSize="14sp"
+                                tools:text="95°" />
+                                
+                            <TextView
+                                android:id="@+id/metric_ankle_bdc_range"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:gravity="center"
+                                android:textColor="#666666"
+                                android:textSize="14sp"
+                                tools:text="80°-110°" />
+                        </LinearLayout>
+                        
+                        <TextView
+                            android:id="@+id/metric_ankle_bdc_stats"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:textSize="11sp"
+                            android:textColor="#666666"
+                            android:visibility="gone"
+                            tools:text="Min: 88° | Max: 102° | SD: 4.2°"
+                            tools:visibility="visible" />
+                    </LinearLayout>
+
+                    <!-- E. Knee Over Pedal (Normalized) Row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingVertical="4dp"
+                        android:orientation="vertical">
+                        
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
+                            
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1.3"
+                                android:text="KOPS (Normalized)"
+                                android:textSize="14sp" />
+                                
+                            <TextView
+                                android:id="@+id/metric_kops_value"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:gravity="center"
+                                android:textStyle="bold"
+                                android:textSize="14sp"
+                                tools:text="0.05" />
+                                
+                            <TextView
+                                android:id="@+id/metric_kops_range"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:gravity="center"
+                                android:textColor="#666666"
+                                android:textSize="14sp"
+                                tools:text="-0.1 - 0.1" />
+                        </LinearLayout>
+                        
+                        <TextView
+                            android:id="@+id/metric_kops_stats"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:textSize="11sp"
+                            android:textColor="#666666"
+                            android:visibility="gone"
+                            tools:text="Min: -0.05 | Max: 0.08 | SD: 0.02"
                             tools:visibility="visible" />
                     </LinearLayout>
 
