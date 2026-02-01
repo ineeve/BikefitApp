@@ -89,6 +89,10 @@ class VideoAnalysisActivity : AppCompatActivity() {
         calibrationOverlay.onPointTappedListener = { x, y ->
             handleCalibrationTap(x, y)
         }
+        
+        calibrationOverlay.onPointAdjustedListener = { type, x, y ->
+            handleCalibrationAdjustment(type, x, y)
+        }
 
         actionButton.setOnClickListener {
             if (calibrationState is CalibrationState.ReadyToConfirm || calibrationState is CalibrationState.Confirmed) {
@@ -149,8 +153,62 @@ class VideoAnalysisActivity : AppCompatActivity() {
         proceedCalibrationState()
         
         // Update UI
-        calibrationOverlay.setCalibration(currentCalibration)
+        updateOverlay()
+    }
+
+    private fun handleCalibrationAdjustment(type: BikeReferencePointType, viewNormX: Float, viewNormY: Float) {
+        val viewX = viewNormX * calibrationOverlay.width
+        val viewY = viewNormY * calibrationOverlay.height
+        
+        val imageRect = getBitmapRect(videoFrameView) ?: return
+        
+        // Clamp to image area
+        val clampedX = viewX.coerceIn(imageRect.left, imageRect.right)
+        val clampedY = viewY.coerceIn(imageRect.top, imageRect.bottom)
+        
+        val imageNormX = (clampedX - imageRect.left) / imageRect.width()
+        val imageNormY = (clampedY - imageRect.top) / imageRect.height()
+        
+        val point = BikeReferencePoint(type, imageNormX, imageNormY)
+        currentCalibration = currentCalibration.withPoint(point)
+        
+        updateOverlay()
+    }
+    
+    // Map Image-Relative coordinates to View-Relative for correct display on Overlay
+    private fun updateOverlay() {
+        val imageRect = getBitmapRect(videoFrameView)
+        
+        if (imageRect == null) {
+             calibrationOverlay.setCalibration(currentCalibration)
+             calibrationOverlay.setState(calibrationState)
+             return
+        }
+
+        val w = calibrationOverlay.width.toFloat()
+        val h = calibrationOverlay.height.toFloat()
+        if (w == 0f || h == 0f) return
+
+        var viewCalibration = BikeCalibration.EMPTY
+        
+        currentCalibration.saddleTop?.let { p ->
+             viewCalibration = viewCalibration.withPoint(mapToView(p, imageRect, w, h))
+        }
+        currentCalibration.bottomBracket?.let { p ->
+             viewCalibration = viewCalibration.withPoint(mapToView(p, imageRect, w, h))
+        }
+        currentCalibration.handlebar?.let { p ->
+             viewCalibration = viewCalibration.withPoint(mapToView(p, imageRect, w, h))
+        }
+
+        calibrationOverlay.setCalibration(viewCalibration)
         calibrationOverlay.setState(calibrationState)
+    }
+
+    private fun mapToView(point: BikeReferencePoint, rect: RectF, viewW: Float, viewH: Float): BikeReferencePoint {
+        val vx = (point.x * rect.width() + rect.left) / viewW
+        val vy = (point.y * rect.height() + rect.top) / viewH
+        return BikeReferencePoint(point.type, vx, vy)
     }
 
     private fun proceedCalibrationState() {
