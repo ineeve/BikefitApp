@@ -170,23 +170,7 @@ object KneeOverPedalOffset {
         }
 
         // Get landmark indices based on side
-        val hipIndex = if (side == BodySide.LEFT) {
-            PoseLandmarkIndex.LEFT_HIP
-        } else {
-            PoseLandmarkIndex.RIGHT_HIP
-        }
-        
-        val kneeIndex = if (side == BodySide.LEFT) {
-            PoseLandmarkIndex.LEFT_KNEE
-        } else {
-            PoseLandmarkIndex.RIGHT_KNEE
-        }
-        
-        val ankleIndex = if (side == BodySide.LEFT) {
-            PoseLandmarkIndex.LEFT_ANKLE
-        } else {
-            PoseLandmarkIndex.RIGHT_ANKLE
-        }
+        val (hipIndex, kneeIndex, ankleIndex) = getLandmarkIndices(side)
 
         // Get the landmarks
         val hip = frame.landmarks[hipIndex]
@@ -204,13 +188,13 @@ object KneeOverPedalOffset {
         val confidence = (hip.visibility + knee.visibility + ankle.visibility) / 3f
 
         // Compute the offset
-        val result = computeOffset(hip, knee, ankle, config)
+        val components = computeOffset(hip, knee, ankle, config)
 
         return KneeOverPedalOffsetResult(
-            normalizedOffset = result.first,
-            alignment = result.second,
-            rawOffset = result.third,
-            femurLength = result.fourth,
+            normalizedOffset = components.normalizedOffset,
+            alignment = components.alignment,
+            rawOffset = components.rawOffset,
+            femurLength = components.femurLength,
             side = side,
             frameNumber = frame.frameNumber,
             timestampMs = frame.timestampMs,
@@ -237,23 +221,7 @@ object KneeOverPedalOffset {
         }
 
         // Get landmark indices based on side
-        val hipIndex = if (side == BodySide.LEFT) {
-            PoseLandmarkIndex.LEFT_HIP
-        } else {
-            PoseLandmarkIndex.RIGHT_HIP
-        }
-        
-        val kneeIndex = if (side == BodySide.LEFT) {
-            PoseLandmarkIndex.LEFT_KNEE
-        } else {
-            PoseLandmarkIndex.RIGHT_KNEE
-        }
-        
-        val ankleIndex = if (side == BodySide.LEFT) {
-            PoseLandmarkIndex.LEFT_ANKLE
-        } else {
-            PoseLandmarkIndex.RIGHT_ANKLE
-        }
+        val (hipIndex, kneeIndex, ankleIndex) = getLandmarkIndices(side)
 
         // Get the landmarks
         val hip = landmarks[hipIndex]
@@ -271,13 +239,13 @@ object KneeOverPedalOffset {
         val confidence = (hip.visibility + knee.visibility + ankle.visibility) / 3f
 
         // Compute the offset
-        val result = computeOffset(hip, knee, ankle, config)
+        val components = computeOffset(hip, knee, ankle, config)
 
         return KneeOverPedalOffsetResult(
-            normalizedOffset = result.first,
-            alignment = result.second,
-            rawOffset = result.third,
-            femurLength = result.fourth,
+            normalizedOffset = components.normalizedOffset,
+            alignment = components.alignment,
+            rawOffset = components.rawOffset,
+            femurLength = components.femurLength,
             side = side,
             frameNumber = 0L,
             timestampMs = 0L,
@@ -287,20 +255,42 @@ object KneeOverPedalOffset {
     }
 
     /**
+     * Gets the landmark indices for the specified body side.
+     * 
+     * @param side Which leg to analyze
+     * @return Triple of (hip index, knee index, ankle index)
+     */
+    private fun getLandmarkIndices(side: BodySide): Triple<Int, Int, Int> {
+        return if (side == BodySide.LEFT) {
+            Triple(
+                PoseLandmarkIndex.LEFT_HIP,
+                PoseLandmarkIndex.LEFT_KNEE,
+                PoseLandmarkIndex.LEFT_ANKLE
+            )
+        } else {
+            Triple(
+                PoseLandmarkIndex.RIGHT_HIP,
+                PoseLandmarkIndex.RIGHT_KNEE,
+                PoseLandmarkIndex.RIGHT_ANKLE
+            )
+        }
+    }
+
+    /**
      * Internal function to compute the normalized offset.
      * 
      * @param hip Hip landmark
      * @param knee Knee landmark
      * @param ankle Ankle landmark (proxy for pedal position)
      * @param config Configuration options
-     * @return Tuple of (normalizedOffset, alignment, rawOffset, femurLength)
+     * @return Offset components including normalized and raw values
      */
     private fun computeOffset(
         hip: Landmark,
         knee: Landmark,
         ankle: Landmark,
         config: KneeOverPedalOffsetConfig
-    ): Quadruple<Float, KneeAlignment, Float, Float> {
+    ): OffsetComponents {
         // Calculate horizontal offset (X-axis difference)
         // Positive = knee forward of ankle, Negative = knee behind ankle
         val horizontalOffset = knee.x - ankle.x
@@ -312,7 +302,7 @@ object KneeOverPedalOffset {
 
         // Guard against zero femur length
         if (femurLength < Vector2D.EPSILON) {
-            return Quadruple(0f, KneeAlignment.NEUTRAL, horizontalOffset, femurLength)
+            return OffsetComponents(0f, KneeAlignment.NEUTRAL, horizontalOffset, femurLength)
         }
 
         // Normalize offset by femur length
@@ -325,7 +315,7 @@ object KneeOverPedalOffset {
             else -> KneeAlignment.REARWARD
         }
 
-        return Quadruple(normalizedOffset, alignment, horizontalOffset, femurLength)
+        return OffsetComponents(normalizedOffset, alignment, horizontalOffset, femurLength)
     }
 
     /**
@@ -401,12 +391,16 @@ object KneeOverPedalOffset {
 }
 
 /**
- * Helper data class for returning four values.
- * (Kotlin doesn't have built-in Quadruple)
+ * Internal data class for offset computation components.
+ * 
+ * @param normalizedOffset Offset normalized by femur length
+ * @param alignment Direction of knee position
+ * @param rawOffset Raw horizontal distance
+ * @param femurLength Length of femur used for normalization
  */
-private data class Quadruple<A, B, C, D>(
-    val first: A,
-    val second: B,
-    val third: C,
-    val fourth: D
+private data class OffsetComponents(
+    val normalizedOffset: Float,
+    val alignment: KneeAlignment,
+    val rawOffset: Float,
+    val femurLength: Float
 )
