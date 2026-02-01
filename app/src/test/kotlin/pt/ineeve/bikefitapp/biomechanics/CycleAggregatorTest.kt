@@ -1,16 +1,19 @@
 package pt.ineeve.bikefitapp.biomechanics
 
-import org.junit.Assert.*
-import org.junit.Before
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
 
 class CycleAggregatorTest {
 
     private lateinit var aggregator: CycleAggregator
 
-    @Before
+    @BeforeEach
     fun setup() {
         aggregator = CycleAggregator(BodySide.LEFT)
+        // Reset counters for each test
+        testFrameCounter = 0L
+        testTimeCounter = 0L
     }
 
     // ==================== Basic Construction Tests ====================
@@ -74,6 +77,9 @@ class CycleAggregatorTest {
         aggregator.endCycleAtBdc(0, 0, null) // First BDC starts cycle
         aggregator.addMeasurement(1, 33, 30f, null, null)
         val cycle = aggregator.endCycleAtBdc(30, 1000, 30f)
+        
+        // Ensure cycle is not null before checking stats
+        assertNotNull(cycle, "Cycle should have been completed")
 
         // Only knee angle was added
         assertEquals(1, cycle?.kneeAngle?.sampleCount)

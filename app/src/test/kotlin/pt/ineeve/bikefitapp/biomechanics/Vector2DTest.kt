@@ -1,7 +1,9 @@
 package pt.ineeve.bikefitapp.biomechanics
 
-import org.junit.Assert.*
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Test
 import kotlin.math.sqrt
 
 /**
@@ -191,9 +193,11 @@ class Vector2DTest {
         assertEquals(3f, scaled.y, 0.001f)
     }
 
-    @Test(expected = IllegalArgumentException::class)
+    @Test
     fun `division by zero throws exception`() {
-        Vector2D(1f, 1f) / 0f
+        assertThrows(IllegalArgumentException::class.java) {
+            Vector2D(1f, 1f) / 0f
+        }
     }
 
     @Test

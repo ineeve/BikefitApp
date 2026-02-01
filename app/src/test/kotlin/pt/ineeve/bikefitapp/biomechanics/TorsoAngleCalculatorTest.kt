@@ -1,7 +1,7 @@
 package pt.ineeve.bikefitapp.biomechanics
 
-import org.junit.Assert.*
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Test
 import pt.ineeve.bikefitapp.pose.Landmark
 import pt.ineeve.bikefitapp.pose.PoseFrame
 import pt.ineeve.bikefitapp.pose.PoseLandmarkIndex
