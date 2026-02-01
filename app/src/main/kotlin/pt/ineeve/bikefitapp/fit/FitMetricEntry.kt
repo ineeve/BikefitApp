@@ -69,7 +69,7 @@ enum class MetricStatus {
  *     discipline = CyclingDiscipline.ROAD
  * )
  * 
- * println("${entry.metricType.displayName()}: ${entry.measuredValue}${entry.unit()}")
+ * println("${entry.metricType.displayName()}: ${entry.measuredValue} ${entry.unit()}")
  * println("Status: ${entry.status.displayText()}")
  * println("Typical range: ${entry.rangeText()}")
  * ```
