@@ -20,17 +20,31 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Cycle Count -->
+    <!-- Cycles -->
+    <TextView
+        android:id="@+id/label_cycles"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Cycles"
+        android:textColor="@android:color/white"
+        android:textSize="14sp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/metrics_title" />
+
     <TextView
         android:id="@+id/metric_cycles"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="0 cycles"
-        android:textColor="#AAAAAA"
-        android:textSize="11sp"
+        android:layout_marginStart="16dp"
+        android:text="0"
+        android:textColor="@android:color/white"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:visibility="visible"
+        app:layout_constraintBaseline_toBaselineOf="@id/label_cycles"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        tools:text="8 cycles" />
+        tools:text="8" />
 
     <!-- Current Knee Angle -->
     <TextView
@@ -42,7 +56,7 @@
         android:textColor="@android:color/white"
         android:textSize="14sp"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/metrics_title" />
+        app:layout_constraintTop_toBottomOf="@id/label_cycles" />
 
     <TextView
         android:id="@+id/metric_knee_angle"

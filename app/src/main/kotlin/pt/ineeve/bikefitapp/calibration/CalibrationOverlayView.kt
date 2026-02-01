@@ -432,4 +432,9 @@ class CalibrationOverlayView @JvmOverloads constructor(
         state = CalibrationState.WaitingForSaddle
         invalidate()
     }
+    
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+    }
 }
+    

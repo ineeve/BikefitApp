@@ -230,7 +230,7 @@ class PoseLandmarkerWrapper(
         private const val TAG = "PoseLandmarkerWrapper"
         
         /** Path to the pose landmarker model in assets */
-        private const val MODEL_ASSET_PATH = "pose_landmarker_lite.task"
+        private const val MODEL_ASSET_PATH = "pose_landmarker_heavy.task"
         
         /** Default minimum confidence for pose detection */
         const val DEFAULT_DETECTION_CONFIDENCE = 0.5f

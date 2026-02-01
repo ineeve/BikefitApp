@@ -346,6 +346,12 @@ class CameraPreviewActivity : AppCompatActivity() {
             if (hasCalibration) {
                 cycleMetricsOverlay.visibility = View.VISIBLE
                 
+                // Update cycle count
+                val cyclesLeft = leftCycleAggregator.getCycleCount()
+                val cyclesRight = rightCycleAggregator.getCycleCount()
+                val totalCycles = cyclesLeft + cyclesRight
+                cycleMetricsOverlay.updateCycleCount(totalCycles)
+                
                 // Update instantaneous knee angle (prioritize Right if visible, else Left)
                 // In a lateral view from the right side, right knee is visible
                 val displayAngle = angleDisplays.firstOrNull { it.label == "R" } 

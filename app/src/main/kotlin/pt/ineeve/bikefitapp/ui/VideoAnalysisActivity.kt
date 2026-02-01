@@ -318,6 +318,12 @@ class VideoAnalysisActivity : AppCompatActivity() {
                  poseOverlay.updatePose(poseResult)
                  poseOverlay.updateAngles(angleDisplays)
                  
+                 // Update cycle count
+                 val cyclesLeft = leftCycleAggregator.getCycleCount()
+                 val cyclesRight = rightCycleAggregator.getCycleCount()
+                 val totalCycles = cyclesLeft + cyclesRight
+                 cycleMetricsOverlay.updateCycleCount(totalCycles)
+                 
                  // Update current knee angle (prioritize Right if visible, else Left)
                  val displayAngle = angleDisplays.firstOrNull { it.label == "R" } 
                      ?: angleDisplays.firstOrNull { it.label == "L" }

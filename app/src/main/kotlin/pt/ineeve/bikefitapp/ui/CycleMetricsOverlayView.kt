@@ -70,7 +70,7 @@ class CycleMetricsOverlayView @JvmOverloads constructor(
      * Updates the cycle count.
      */
     fun updateCycleCount(count: Int) {
-        cycleCountText.text = if (count == 1) "1 cycle" else "$count cycles"
+        cycleCountText.text = count.toString()
     }
     
     /**
@@ -88,7 +88,7 @@ class CycleMetricsOverlayView @JvmOverloads constructor(
         kneeAngleText.text = "--"
         hipAngleText.text = "--"
         torsoAngleText.text = "--"
-        cycleCountText.text = "0 cycles"
+        cycleCountText.text = "0"
         maxExtensionText.text = "--"
         minFlexionText.text = "--"
     }

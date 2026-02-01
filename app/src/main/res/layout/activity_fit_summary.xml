@@ -141,14 +141,14 @@
                                 android:layout_height="wrap_content"
                                 android:text="Cycles"
                                 android:textSize="11sp"
-                                android:textColor="#666666" />
+                                android:textColor="#AAAAAA" />
                             <TextView
                                 android:id="@+id/cycle_count_value"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:textSize="16sp"
                                 android:textStyle="bold"
-                                android:textColor="@color/black"
+                                android:textColor="@android:color/white"
                                 android:layout_marginTop="4dp"
                                 android:text="--" />
                         </LinearLayout>
@@ -170,14 +170,14 @@
                                 android:layout_height="wrap_content"
                                 android:text="Cadence"
                                 android:textSize="11sp"
-                                android:textColor="#666666" />
+                                android:textColor="#AAAAAA" />
                             <TextView
                                 android:id="@+id/cadence_value"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:textSize="16sp"
                                 android:textStyle="bold"
-                                android:textColor="@color/black"
+                                android:textColor="@android:color/white"
                                 android:layout_marginTop="4dp"
                                 android:text="--" />
                         </LinearLayout>
@@ -199,7 +199,7 @@
                                 android:layout_height="wrap_content"
                                 android:text="Quality"
                                 android:textSize="11sp"
-                                android:textColor="#666666" />
+                                android:textColor="#AAAAAA" />
                             <TextView
                                 android:id="@+id/data_quality_value"
                                 android:layout_width="wrap_content"
