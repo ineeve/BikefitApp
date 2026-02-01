@@ -142,8 +142,12 @@ Instruction: "Tap on the handlebar grip"
 **Step 4: Start Pedaling**
 - Begin pedaling at normal cadence (70-90 RPM)
 - **Pose Skeleton:** Appears when body detected
-- **Cycle Counter:** Shows detected cycles
-- **Metrics Overlay:** Displays real-time angles
+- **Live Metrics Overlay:** Shows real-time angles:
+  - Cycle count (in header)
+  - Knee angle (primary, largest)
+  - Hip angle
+  - Torso angle
+- **Cycle Metrics:** Max extension and min flexion update after each cycle
 
 **Step 5: Record Data**
 - Pedal for **5-10 complete cycles** (30-60 seconds)
@@ -170,8 +174,13 @@ Instruction: "Tap on the handlebar grip"
 **Step 3: Play & Analyze**
 - Tap "Start Analysis" to begin processing
 - Video plays with pose overlay
+- **Live Metrics Overlay:** Shows real-time angles:
+  - Cycle count (in header)
+  - Knee angle (primary, largest)
+  - Hip angle
+  - Torso angle
+- **Cycle Metrics:** Max extension and min flexion update after each cycle
 - **Progress Bar:** Shows analysis progress
-- **Cycle Counter:** Increments as cycles detected
 
 **Step 4: View Results**
 - Processing completes automatically
@@ -202,6 +211,28 @@ Instruction: "Tap on the handlebar grip"
 ## Understanding Results
 
 ### Fit Summary Screen
+
+**Session Summary:**
+At the top of the results, you'll see an overview of your recording:
+```
+Cycles: 8 | Cadence: 85 RPM | Quality: 92%
+```
+- **Cycles:** Number of complete pedal cycles analyzed
+- **Cadence:** Average pedaling speed in revolutions per minute
+- **Quality:** Data quality percentage (green >80%, yellow >60%, red <60%)
+
+**Biomechanical Metrics:**
+Each metric displays comprehensive statistics:
+- **Average Value:** Bold number in center column
+- **Detailed Stats:** Min/Max/Standard Deviation shown below each metric
+- **Ideal Range:** Right column shows optimal target range
+
+Metrics displayed:
+1. **Knee Extension** - Angle at bottom dead center (BDC)
+2. **Knee Flexion** - Angle at top dead center (TDC)
+3. **Hip Angle** - Hip joint angle throughout cycle
+4. **Torso Angle** - Back angle relative to horizontal
+5. **Knee fwd of Pedal** - KOPS measurement when available
 
 **Overall Grade:**
 ```

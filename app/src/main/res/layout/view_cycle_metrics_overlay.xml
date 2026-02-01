@@ -20,13 +20,25 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
+    <!-- Cycle Count -->
+    <TextView
+        android:id="@+id/metric_cycles"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="0 cycles"
+        android:textColor="#AAAAAA"
+        android:textSize="11sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="8 cycles" />
+
     <!-- Current Knee Angle -->
     <TextView
         android:id="@+id/label_knee_angle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:text="Knee Angle"
+        android:text="Knee"
         android:textColor="@android:color/white"
         android:textSize="14sp"
         app:layout_constraintStart_toStartOf="parent"
@@ -45,6 +57,56 @@
         app:layout_constraintEnd_toEndOf="parent"
         tools:text="142°" />
 
+    <!-- Hip Angle -->
+    <TextView
+        android:id="@+id/label_hip_angle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Hip"
+        android:textColor="@android:color/white"
+        android:textSize="14sp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/label_knee_angle" />
+
+    <TextView
+        android:id="@+id/metric_hip_angle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:text="--"
+        android:textColor="@android:color/white"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        app:layout_constraintBaseline_toBaselineOf="@id/label_hip_angle"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:text="105°" />
+
+    <!-- Torso Angle -->
+    <TextView
+        android:id="@+id/label_torso_angle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Torso"
+        android:textColor="@android:color/white"
+        android:textSize="14sp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/label_hip_angle" />
+
+    <TextView
+        android:id="@+id/metric_torso_angle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:text="--"
+        android:textColor="@android:color/white"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        app:layout_constraintBaseline_toBaselineOf="@id/label_torso_angle"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:text="45°" />
+
     <!-- Separator -->
     <View
         android:id="@+id/separator"
@@ -54,7 +116,7 @@
         android:background="#44FFFFFF"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/label_knee_angle" />
+        app:layout_constraintTop_toBottomOf="@id/label_torso_angle" />
 
     <!-- Max Extension (Last Cycle) -->
     <TextView

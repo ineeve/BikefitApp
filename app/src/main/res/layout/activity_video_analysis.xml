@@ -33,6 +33,16 @@
         app:layout_constraintBottom_toBottomOf="@id/video_frame_view"
         app:layout_constraintStart_toStartOf="@id/video_frame_view"
         app:layout_constraintEnd_toEndOf="@id/video_frame_view" />
+
+    <pt.ineeve.bikefitapp.ui.CycleMetricsOverlayView
+        android:id="@+id/cycle_metrics_overlay"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="@id/video_frame_view"
+        app:layout_constraintBottom_toBottomOf="@id/video_frame_view"
+        app:layout_constraintStart_toStartOf="@id/video_frame_view"
+        app:layout_constraintEnd_toEndOf="@id/video_frame_view" />
         
     <com.google.android.material.button.MaterialButton
         android:id="@+id/action_button"

@@ -48,12 +48,23 @@ class FitSummaryActivity : AppCompatActivity() {
     private lateinit var metricsCard: MaterialCardView
     private lateinit var metricExtensionValue: TextView
     private lateinit var metricExtensionRange: TextView
+    private lateinit var metricExtensionStats: TextView
     private lateinit var metricFlexionValue: TextView
     private lateinit var metricFlexionRange: TextView
+    private lateinit var metricFlexionStats: TextView
+    private lateinit var metricHipValue: TextView
+    private lateinit var metricHipRange: TextView
+    private lateinit var metricHipStats: TextView
+    private lateinit var metricTorsoValue: TextView
+    private lateinit var metricTorsoRange: TextView
+    private lateinit var metricTorsoStats: TextView
     private lateinit var metricKopsValue: TextView
     private lateinit var metricKopsRange: TextView
-    private lateinit var metricShoulderValue: TextView
-    private lateinit var metricShoulderRange: TextView
+    
+    // Additional stats views
+    private lateinit var cadenceValue: TextView
+    private lateinit var cycleCountValue: TextView
+    private lateinit var dataQualityValue: TextView
 
     private lateinit var adapter: FitRecommendationAdapter
 
@@ -82,26 +93,27 @@ class FitSummaryActivity : AppCompatActivity() {
         metricsCard = findViewById(R.id.metrics_card)
         metricExtensionValue = findViewById(R.id.metric_extension_value)
         metricExtensionRange = findViewById(R.id.metric_extension_range)
+        metricExtensionStats = findViewById(R.id.metric_extension_stats)
         metricFlexionValue = findViewById(R.id.metric_flexion_value)
         metricFlexionRange = findViewById(R.id.metric_flexion_range)
+        metricFlexionStats = findViewById(R.id.metric_flexion_stats)
+        metricHipValue = findViewById(R.id.metric_hip_value)
+        metricHipRange = findViewById(R.id.metric_hip_range)
+        metricHipStats = findViewById(R.id.metric_hip_stats)
+        metricTorsoValue = findViewById(R.id.metric_torso_value)
+        metricTorsoRange = findViewById(R.id.metric_torso_range)
+        metricTorsoStats = findViewById(R.id.metric_torso_stats)
         metricKopsValue = findViewById(R.id.metric_kops_value)
         metricKopsRange = findViewById(R.id.metric_kops_range)
-        metricShoulderValue = findViewById(R.id.metric_shoulder_value)
-        metricShoulderRange = findViewById(R.id.metric_shoulder_range)
+        
+        // Additional stats
+        cadenceValue = findViewById(R.id.cadence_value)
+        cycleCountValue = findViewById(R.id.cycle_count_value)
+        dataQualityValue = findViewById(R.id.data_quality_value)
 
         recommendationsHeader = findViewById(R.id.recommendations_header)
         recommendationsRecycler = findViewById(R.id.recommendations_recycler)
         emptyState = findViewById(R.id.empty_state)
-        
-        metricsCard = findViewById(R.id.metrics_card)
-        metricExtensionValue = findViewById(R.id.metric_extension_value)
-        metricExtensionRange = findViewById(R.id.metric_extension_range)
-        metricFlexionValue = findViewById(R.id.metric_flexion_value)
-        metricFlexionRange = findViewById(R.id.metric_flexion_range)
-        metricKopsValue = findViewById(R.id.metric_kops_value)
-        metricKopsRange = findViewById(R.id.metric_kops_range)
-        metricShoulderValue = findViewById(R.id.metric_shoulder_value)
-        metricShoulderRange = findViewById(R.id.metric_shoulder_range)
     }
 
     private fun setupToolbar() {
@@ -145,27 +157,97 @@ class FitSummaryActivity : AppCompatActivity() {
     }
 
     private fun displayMetrics(summary: FitSummary) {
-        val metrics = summary.cycleSummary ?: return
+        val metrics = summary.cycleSummary
         
-        // Extension (Knee Angle at BDC)
-        val extValue = metrics.averageKneeAngleAtBdc
-        metricExtensionValue.text = extValue?.let { "%.1f°".format(it) } ?: "--"
-        metricExtensionRange.text = "25° - 35°" // Based on SaddleHeightRule defaults
+        if (metrics == null) {
+            metricsCard.visibility = View.GONE
+            return
+        }
         
-        // Flexion (Knee Angle at TDC)
-        val flexValue = metrics.averageKneeAngleAtTdc
-        metricFlexionValue.text = flexValue?.let { "%.1f°".format(it) } ?: "--"
-        metricFlexionRange.text = "70° - 110°"
+        // Knee Extension at BDC - showing full stats
+        val bdcStats = metrics.kneeAngleAtBdcStats
+        if (bdcStats.isValid) {
+            metricExtensionValue.text = "%.1f°".format(metrics.averageKneeAngleAtBdc ?: 0f)
+            metricExtensionRange.text = "145° - 155°"
+            metricExtensionStats.text = "Min: %.1f° | Max: %.1f° | SD: %.1f°".format(
+                bdcStats.min, bdcStats.max, bdcStats.standardDeviation
+            )
+            metricExtensionStats.visibility = View.VISIBLE
+        } else {
+            metricExtensionValue.text = "--"
+            metricExtensionRange.text = "145° - 155°"
+            metricExtensionStats.visibility = View.GONE
+        }
         
-        // KOPS
-        // We don't have KOPS in cycle summary yet.
+        // Knee Flexion at TDC - showing full stats
+        val tdcStats = metrics.kneeAngleAtTdcStats
+        if (tdcStats.isValid) {
+            metricFlexionValue.text = "%.1f°".format(metrics.averageKneeAngleAtTdc ?: 0f)
+            metricFlexionRange.text = "70° - 110°"
+            metricFlexionStats.text = "Min: %.1f° | Max: %.1f° | SD: %.1f°".format(
+                tdcStats.min, tdcStats.max, tdcStats.standardDeviation
+            )
+            metricFlexionStats.visibility = View.VISIBLE
+        } else {
+            metricFlexionValue.text = "--"
+            metricFlexionRange.text = "70° - 110°"
+            metricFlexionStats.visibility = View.GONE
+        }
+        
+        // Hip Angle - showing full stats
+        val hipStats = metrics.hipAngleStats
+        if (hipStats.isValid) {
+            metricHipValue.text = "%.1f°".format(metrics.averageHipAngle)
+            metricHipRange.text = "90° - 110°"
+            metricHipStats.text = "Min: %.1f° | Max: %.1f° | SD: %.1f°".format(
+                hipStats.min, hipStats.max, hipStats.standardDeviation
+            )
+            metricHipStats.visibility = View.VISIBLE
+        } else {
+            metricHipValue.text = "--"
+            metricHipRange.text = "90° - 110°"
+            metricHipStats.visibility = View.GONE
+        }
+        
+        // Torso Angle - showing full stats
+        val torsoStats = metrics.torsoAngleStats
+        if (torsoStats.isValid) {
+            metricTorsoValue.text = "%.1f°".format(metrics.averageTorsoAngle)
+            metricTorsoRange.text = "30° - 60°"
+            metricTorsoStats.text = "Min: %.1f° | Max: %.1f° | SD: %.1f°".format(
+                torsoStats.min, torsoStats.max, torsoStats.standardDeviation
+            )
+            metricTorsoStats.visibility = View.VISIBLE
+        } else {
+            metricTorsoValue.text = "--"
+            metricTorsoRange.text = "30° - 60°"
+            metricTorsoStats.visibility = View.GONE
+        }
+        
+        // KOPS - TODO: Add when KOPS data is available in CycleSummary
         metricKopsValue.text = "--"
-        metricKopsRange.text = "±10mm"
+        metricKopsRange.text = "±3%"
         
-        // Shoulder (Torso Angle)
-        val shoulderValue = metrics.averageTorsoAngle
-        metricShoulderValue.text = "%.1f°".format(shoulderValue)
-        metricShoulderRange.text = "30° - 60°"
+        // Cadence
+        metrics.averageCadenceRpm?.let { cadence ->
+            cadenceValue.text = "%.0f RPM".format(cadence)
+        } ?: run {
+            cadenceValue.text = "--"
+        }
+        
+        // Cycle Count
+        cycleCountValue.text = "%d cycles".format(metrics.cycleCount)
+        
+        // Data Quality
+        val quality = metrics.dataQuality
+        val qualityPercent = (quality * 100).toInt()
+        dataQualityValue.text = "%d%%".format(qualityPercent)
+        dataQualityValue.setTextColor(ContextCompat.getColor(this, when {
+            quality >= 0.8f -> R.color.grade_excellent
+            quality >= 0.6f -> R.color.grade_good
+            quality >= 0.4f -> R.color.grade_fair
+            else -> R.color.grade_poor
+        }))
         
         metricsCard.visibility = View.VISIBLE
     }

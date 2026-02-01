@@ -12,7 +12,9 @@ import java.util.Locale
  * Overlay view to display real-time cycle metrics.
  * 
  * Shows:
- * - Current Knee Angle
+ * - Current Knee Angle (real-time)
+ * - Current Hip Angle (real-time)
+ * - Current Torso Angle (real-time)
  * - Max Extension (from last complete cycle)
  * - Min Flexion (from last complete cycle)
  */
@@ -23,6 +25,9 @@ class CycleMetricsOverlayView @JvmOverloads constructor(
 ) : ConstraintLayout(context, attrs, defStyleAttr) {
 
     private val kneeAngleText: TextView
+    private val hipAngleText: TextView
+    private val torsoAngleText: TextView
+    private val cycleCountText: TextView
     private val maxExtensionText: TextView
     private val minFlexionText: TextView
 
@@ -30,6 +35,9 @@ class CycleMetricsOverlayView @JvmOverloads constructor(
         LayoutInflater.from(context).inflate(R.layout.view_cycle_metrics_overlay, this, true)
         
         kneeAngleText = findViewById(R.id.metric_knee_angle)
+        hipAngleText = findViewById(R.id.metric_hip_angle)
+        torsoAngleText = findViewById(R.id.metric_torso_angle)
+        cycleCountText = findViewById(R.id.metric_cycles)
         maxExtensionText = findViewById(R.id.metric_max_extension)
         minFlexionText = findViewById(R.id.metric_min_flexion)
         
@@ -45,6 +53,27 @@ class CycleMetricsOverlayView @JvmOverloads constructor(
     }
     
     /**
+     * Updates the real-time hip angle.
+     */
+    fun updateCurrentHipAngle(angle: Float) {
+        hipAngleText.text = String.format(Locale.getDefault(), "%.0f°", angle)
+    }
+    
+    /**
+     * Updates the real-time torso angle.
+     */
+    fun updateCurrentTorsoAngle(angle: Float) {
+        torsoAngleText.text = String.format(Locale.getDefault(), "%.0f°", angle)
+    }
+    
+    /**
+     * Updates the cycle count.
+     */
+    fun updateCycleCount(count: Int) {
+        cycleCountText.text = if (count == 1) "1 cycle" else "$count cycles"
+    }
+    
+    /**
      * Updates the cycle metrics from a completed cycle.
      */
     fun updateCycleMetrics(maxExtension: Float, minFlexion: Float) {
@@ -57,6 +86,9 @@ class CycleMetricsOverlayView @JvmOverloads constructor(
      */
     fun reset() {
         kneeAngleText.text = "--"
+        hipAngleText.text = "--"
+        torsoAngleText.text = "--"
+        cycleCountText.text = "0 cycles"
         maxExtensionText.text = "--"
         minFlexionText.text = "--"
     }

@@ -201,13 +201,13 @@ WaitingForSaddle → WaitingForBottomBracket → WaitingForHandlebar → Complet
 1. `HomeActivity` - Entry point with mode selection (real-time / gallery)
 2. `CameraPreviewActivity` (748 lines) - Live camera analysis with overlays
 3. `CalibrationActivity` - Interactive 3-point bike marking
-4. `VideoAnalysisActivity` (396 lines) - Gallery video analysis
-5. `FitSummaryActivity` (275 lines) - Results display with recommendations
+4. `VideoAnalysisActivity` (396 lines) - Gallery video analysis with live metrics overlay
+5. `FitSummaryActivity` (275 lines) - Results display with comprehensive statistics (min/max/avg/stddev for all metrics), session summary (cycle count, cadence, data quality), and prioritized recommendations
 
 **Custom Views (6 total):**
 1. `PoseOverlayView` - Skeleton rendering with customizable colors
 2. `BikeOverlayView` - Bike reference geometry display
-3. `CycleMetricsOverlayView` - Real-time metrics overlay
+3. `CycleMetricsOverlayView` - Real-time metrics overlay (cycle count, knee/hip/torso angles, max extension, min flexion)
 4. `AnalysisStatusView` - Status messages with icons (error/warning/info)
 5. `RecordingGuidanceView` - Setup tips carousel
 6. `CalibrationOverlayView` - Interactive calibration markers

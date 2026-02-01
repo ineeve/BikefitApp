@@ -10,14 +10,16 @@ Android application that uses computer vision and pose estimation to analyze bic
 - ✅ **Interactive 3-Point Calibration** - Visual bike geometry setup (saddle, bottom bracket, handlebar)
 
 ### Biomechanical Metrics
-- ✅ **Knee Angle Analysis** - Flexion/extension at BDC and TDC
-- ✅ **Hip Angle Analysis** - Range of motion tracking
+- ✅ **Knee Angle Analysis** - Flexion/extension at BDC and TDC with full statistics
+- ✅ **Hip Angle Analysis** - Range of motion tracking with min/max/stddev
 - ✅ **Hip Rocking Detection** - Variance and amplitude analysis
 - ✅ **Ankle Flexion Analysis** - Ankle angle throughout pedal stroke
-- ✅ **Torso Angle Analysis** - Back angle relative to horizontal
+- ✅ **Torso Angle Analysis** - Back angle relative to horizontal with statistics
 - ✅ **KOPS Analysis** - Knee Over Pedal Spindle position (normalized by femur length)
 - ✅ **Pedal Cycle Detection** - Automatic BDC/TDC event identification
-- ✅ **Statistical Aggregation** - Min/max/average/stddev per cycle
+- ✅ **Statistical Aggregation** - Min/max/average/stddev calculated and displayed per metric
+- ✅ **Cadence Tracking** - Average RPM across all cycles
+- ✅ **Data Quality Assessment** - Real-time quality percentage with color coding
 
 ### Fit Recommendations
 - ✅ **Saddle Height Rule** - Optimal knee angle 145-155° at BDC
@@ -30,7 +32,8 @@ Android application that uses computer vision and pose estimation to analyze bic
 ### Visualization
 - ✅ **Pose Skeleton Overlay** - Real-time pose visualization
 - ✅ **Bike Geometry Overlay** - Calibration reference display
-- ✅ **Live Metrics Overlay** - Real-time angle measurements
+- ✅ **Live Metrics Overlay** - Real-time display of knee, hip, and torso angles (camera + video modes)
+- ✅ **Cycle Metrics Display** - Max extension and min flexion per complete cycle
 - ✅ **Analysis Status Indicators** - Error/warning/info messages
 - ✅ **Recording Guidance** - Setup tips carousel
 

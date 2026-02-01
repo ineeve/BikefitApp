@@ -19,6 +19,8 @@ import pt.ineeve.bikefitapp.R
 import pt.ineeve.bikefitapp.biomechanics.BodySide
 import pt.ineeve.bikefitapp.biomechanics.CycleSummary
 import pt.ineeve.bikefitapp.biomechanics.KneeAngleCalculator
+import pt.ineeve.bikefitapp.biomechanics.HipAngleCalculator
+import pt.ineeve.bikefitapp.biomechanics.TorsoAngleCalculator
 import pt.ineeve.bikefitapp.calibration.BikeCalibration
 import pt.ineeve.bikefitapp.calibration.CalibrationActivity
 import pt.ineeve.bikefitapp.calibration.CalibrationRepository
@@ -352,6 +354,18 @@ class CameraPreviewActivity : AppCompatActivity() {
                 if (displayAngle != null) {
                     cycleMetricsOverlay.updateCurrentKneeAngle(displayAngle.angle)
                 }
+                
+                // Update hip angle
+                val hipResult = HipAngleCalculator.calculateHipAngle(poseResult, BodySide.RIGHT)
+                if (hipResult.isValid) {
+                    cycleMetricsOverlay.updateCurrentHipAngle(hipResult.angle)
+                }
+                
+                // Update torso angle
+                val torsoResult = TorsoAngleCalculator.calculateTorsoAngle(poseResult, BodySide.RIGHT)
+                if (torsoResult.isValid) {
+                    cycleMetricsOverlay.updateCurrentTorsoAngle(torsoResult.angle)
+                }
             } else {
                 cycleMetricsOverlay.visibility = View.GONE
             }
@@ -435,13 +449,23 @@ class CameraPreviewActivity : AppCompatActivity() {
         // Calculate knee angle
         val kneeResult = KneeAngleCalculator.calculateKneeAngle(poseResult, side)
         val kneeAngle = if (kneeResult.isValid) kneeResult.angle else null
+        
+        // Calculate hip angle
+        val hipResult = HipAngleCalculator.calculateHipAngle(poseResult, side)
+        val hipAngle = if (hipResult.isValid) hipResult.angle else null
+        
+        // Calculate torso angle
+        val torsoResult = TorsoAngleCalculator.calculateTorsoAngle(poseResult, side)
+        val torsoAngle = if (torsoResult.isValid) torsoResult.angle else null
 
         // Feed aggregator
         val aggregator = if (side == BodySide.LEFT) leftCycleAggregator else rightCycleAggregator
         aggregator.addMeasurement(
             frameNumber = frameNumber,
             timestampMs = timestampMs,
-            kneeAngle = kneeAngle
+            kneeAngle = kneeAngle,
+            hipAngle = hipAngle,
+            torsoAngle = torsoAngle
         )
 
         // Detect cycles via ankle position
@@ -477,6 +501,7 @@ class CameraPreviewActivity : AppCompatActivity() {
                         val cyclesRight = rightCycleAggregator.getCycleCount()
                         val totalCycles = cyclesLeft + cyclesRight
                         
+                        cycleMetricsOverlay.updateCycleCount(totalCycles)
                         cycleMetricsOverlay.updateCycleMetrics(
                             maxExtension = cycleMetrics.kneeAngleAtBdc ?: cycleMetrics.kneeAngle.max,
                             minFlexion = cycleMetrics.kneeAngleAtTdc ?: cycleMetrics.kneeAngle.min

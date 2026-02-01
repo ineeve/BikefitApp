@@ -28,12 +28,14 @@ import pt.ineeve.bikefitapp.fit.FitSummary
 import pt.ineeve.bikefitapp.pose.*
 import com.google.android.material.button.MaterialButton
 import com.google.mediapipe.tasks.vision.core.RunningMode
+import pt.ineeve.bikefitapp.ui.AngleDisplay
 
 class VideoAnalysisActivity : AppCompatActivity() {
 
     private lateinit var videoFrameView: ImageView
     private lateinit var calibrationOverlay: CalibrationOverlayView
     private lateinit var poseOverlay: PoseOverlayView
+    private lateinit var cycleMetricsOverlay: CycleMetricsOverlayView
     private lateinit var actionButton: MaterialButton
     private lateinit var progressContainer: LinearLayout
     private lateinit var progressBar: ProgressBar
@@ -68,6 +70,7 @@ class VideoAnalysisActivity : AppCompatActivity() {
         calibrationOverlay = findViewById(R.id.calibration_overlay)
         poseOverlay = findViewById(R.id.pose_overlay)
         poseOverlay.scaleType = PoseOverlayView.ScaleType.FIT_CENTER
+        cycleMetricsOverlay = findViewById(R.id.cycle_metrics_overlay)
         
         actionButton = findViewById(R.id.action_button)
         progressContainer = findViewById(R.id.progress_container)
@@ -231,6 +234,7 @@ class VideoAnalysisActivity : AppCompatActivity() {
     private fun startAnalysis() {
         calibrationOverlay.visibility = View.GONE
         poseOverlay.visibility = View.VISIBLE
+        cycleMetricsOverlay.visibility = View.VISIBLE
         actionButton.visibility = View.GONE
         progressContainer.visibility = View.VISIBLE
         
@@ -306,14 +310,64 @@ class VideoAnalysisActivity : AppCompatActivity() {
          val poseResult = poseLandmarkerWrapper?.detectPoseForVideo(bitmap, timestampMs) ?: PoseResult.EMPTY
          
          if (poseResult.isValid) {
+             // Calculate knee angles for display
+             val angleDisplays = calculateKneeAngles(poseResult)
+             
              withContext(Dispatchers.Main) {
                  poseOverlay.setImageSourceInfo(bitmap.width, bitmap.height)
                  poseOverlay.updatePose(poseResult)
+                 poseOverlay.updateAngles(angleDisplays)
+                 
+                 // Update current knee angle (prioritize Right if visible, else Left)
+                 val displayAngle = angleDisplays.firstOrNull { it.label == "R" } 
+                     ?: angleDisplays.firstOrNull { it.label == "L" }
+                 
+                 if (displayAngle != null) {
+                     cycleMetricsOverlay.updateCurrentKneeAngle(displayAngle.angle)
+                 }
+                 
+                 // Update hip angle
+                 val hipResult = HipAngleCalculator.calculateHipAngle(poseResult, BodySide.RIGHT)
+                 if (hipResult.isValid) {
+                     cycleMetricsOverlay.updateCurrentHipAngle(hipResult.angle)
+                 }
+                 
+                 // Update torso angle
+                 val torsoResult = TorsoAngleCalculator.calculateTorsoAngle(poseResult, BodySide.RIGHT)
+                 if (torsoResult.isValid) {
+                     cycleMetricsOverlay.updateCurrentTorsoAngle(torsoResult.angle)
+                 }
              }
              
              processSideMetrics(poseResult, BodySide.RIGHT, timestampMs, frameNumber)
              processSideMetrics(poseResult, BodySide.LEFT, timestampMs, frameNumber)
          }
+    }
+
+    private fun calculateKneeAngles(poseResult: PoseResult): List<AngleDisplay> {
+        val angles = mutableListOf<AngleDisplay>()
+        
+        val leftKnee = KneeAngleCalculator.calculateKneeAngle(poseResult, BodySide.LEFT)
+        if (leftKnee.isValid) {
+            angles.add(AngleDisplay(
+                angle = leftKnee.angle,
+                landmarkIndex = PoseLandmarkIndex.LEFT_KNEE,
+                isValid = true,
+                label = "L"
+            ))
+        }
+        
+        val rightKnee = KneeAngleCalculator.calculateKneeAngle(poseResult, BodySide.RIGHT)
+        if (rightKnee.isValid) {
+            angles.add(AngleDisplay(
+                angle = rightKnee.angle,
+                landmarkIndex = PoseLandmarkIndex.RIGHT_KNEE,
+                isValid = true,
+                label = "R"
+            ))
+        }
+        
+        return angles
     }
 
     private fun processSideMetrics(poseResult: PoseResult, side: BodySide, timestampMs: Long, frameNumber: Long) {
@@ -328,9 +382,15 @@ class VideoAnalysisActivity : AppCompatActivity() {
         val kneeResult = KneeAngleCalculator.calculateKneeAngle(poseResult, side)
         val kneeAngle = if (kneeResult.isValid) kneeResult.angle else null
         
+        val hipResult = HipAngleCalculator.calculateHipAngle(poseResult, side)
+        val hipAngle = if (hipResult.isValid) hipResult.angle else null
+        
+        val torsoResult = TorsoAngleCalculator.calculateTorsoAngle(poseResult, side)
+        val torsoAngle = if (torsoResult.isValid) torsoResult.angle else null
+        
         val aggregator = if (side == BodySide.LEFT) leftCycleAggregator else rightCycleAggregator
         
-        aggregator.addMeasurement(frameNumber, timestampMs, kneeAngle)
+        aggregator.addMeasurement(frameNumber, timestampMs, kneeAngle, hipAngle, torsoAngle)
         
         val events = pedalDetector.processAnklePosition(
             frameNumber = frameNumber,
@@ -343,7 +403,22 @@ class VideoAnalysisActivity : AppCompatActivity() {
         for (event in events) {
             if (event.type == PedalExtremum.BDC) {
                 val angleAtBdc = kneeAngle ?: 0f 
-                aggregator.endCycleAtBdc(event.frameNumber, event.timestampMs, angleAtBdc)
+                val cycleMetrics = aggregator.endCycleAtBdc(event.frameNumber, event.timestampMs, angleAtBdc)
+                
+                // Update overlay with latest cycle metrics
+                if (cycleMetrics != null) {
+                    lifecycleScope.launch(Dispatchers.Main) {
+                        val cyclesLeft = leftCycleAggregator.getCycleCount()
+                        val cyclesRight = rightCycleAggregator.getCycleCount()
+                        val totalCycles = cyclesLeft + cyclesRight
+                        
+                        cycleMetricsOverlay.updateCycleCount(totalCycles)
+                        cycleMetricsOverlay.updateCycleMetrics(
+                            maxExtension = cycleMetrics.kneeAngleAtBdc ?: cycleMetrics.kneeAngle.max,
+                            minFlexion = cycleMetrics.kneeAngleAtTdc ?: cycleMetrics.kneeAngle.min
+                        )
+                    }
+                }
             }
         }
     }
