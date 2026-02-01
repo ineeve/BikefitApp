@@ -276,6 +276,17 @@ class CycleAggregator(
         private const val MIN_KNEE_ROM_DEGREES = 40.0f
         // IQR multiplier for outlier detection
         private const val IQR_MULTIPLIER = 1.5f
+        
+        // Data quality constants
+        private const val LOW_SAMPLE_SIZE_QUALITY = 0.3f
+        private const val MISSING_BDC_DATA_PENALTY = 1f
+        private const val MISSING_CADENCE_DATA_PENALTY = 0.5f
+        private const val MAX_BDC_CV = 0.2f  // Typical good CV for angles: < 10%
+        private const val MAX_CADENCE_CV = 0.1f  // Typical good CV for cadence: < 5%
+        private const val IDEAL_SAMPLE_SIZE = 10f
+        private const val BDC_QUALITY_WEIGHT = 0.4f
+        private const val CADENCE_QUALITY_WEIGHT = 0.4f
+        private const val SAMPLE_SIZE_WEIGHT = 0.2f
 
         /**
          * Filters outliers from a list of cycles using the IQR method.
@@ -346,12 +357,15 @@ class CycleAggregator(
         /**
          * Calculates data quality score based on consistency and sample size.
          * 
+         * Quality is computed from coefficient of variation (CV) for key metrics
+         * and sample size. Lower CV indicates more consistent pedaling.
+         * 
          * @param cycles List of cycles to evaluate
          * @return Quality score from 0 to 1
          */
         fun calculateDataQuality(cycles: List<CycleMetrics>): Float {
             if (cycles.isEmpty()) return 0f
-            if (cycles.size < 3) return 0.3f // Low quality with few samples
+            if (cycles.size < 3) return LOW_SAMPLE_SIZE_QUALITY
 
             // Calculate coefficient of variation for key metrics
             val bdcAngles = cycles.mapNotNull { it.kneeAngleAtBdc }
@@ -360,26 +374,26 @@ class CycleAggregator(
             val bdcCV = if (bdcAngles.isNotEmpty()) {
                 calculateCoefficientOfVariation(bdcAngles)
             } else {
-                1f // Poor if no BDC data
+                MISSING_BDC_DATA_PENALTY  // Poor if no BDC data
             }
 
             val cadenceCV = if (cadences.isNotEmpty()) {
                 calculateCoefficientOfVariation(cadences)
             } else {
-                0.5f // Moderate if no cadence data
+                MISSING_CADENCE_DATA_PENALTY  // Moderate if no cadence data
             }
 
             // Lower CV = better quality (more consistent)
-            // Typical good CV for angles: < 0.1 (10%)
-            // Typical good CV for cadence: < 0.05 (5%)
-            val bdcQuality = (1f - (bdcCV / 0.2f)).coerceIn(0f, 1f)
-            val cadenceQuality = (1f - (cadenceCV / 0.1f)).coerceIn(0f, 1f)
+            val bdcQuality = (1f - (bdcCV / MAX_BDC_CV)).coerceIn(0f, 1f)
+            val cadenceQuality = (1f - (cadenceCV / MAX_CADENCE_CV)).coerceIn(0f, 1f)
 
             // Sample size factor: more cycles = better quality
-            val sampleQuality = (cycles.size / 10f).coerceIn(0f, 1f)
+            val sampleQuality = (cycles.size / IDEAL_SAMPLE_SIZE).coerceIn(0f, 1f)
 
             // Weighted average
-            return (bdcQuality * 0.4f + cadenceQuality * 0.4f + sampleQuality * 0.2f)
+            return (bdcQuality * BDC_QUALITY_WEIGHT + 
+                    cadenceQuality * CADENCE_QUALITY_WEIGHT + 
+                    sampleQuality * SAMPLE_SIZE_WEIGHT)
         }
 
         /**
