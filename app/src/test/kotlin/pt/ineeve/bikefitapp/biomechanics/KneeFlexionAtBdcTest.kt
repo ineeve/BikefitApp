@@ -146,8 +146,8 @@ class KneeFlexionAtBdcTest {
                 
                 // Simulate ankle Y movement (sine wave)
                 // BDC is at the bottom (max Y), TDC at top (min Y)
-                val phase = (i.toFloat() / framesPerCycle) * 2 * Math.PI
-                val ankleY = 0.7f + 0.2f * kotlin.math.sin(phase).toFloat()
+                val phase = (i.toFloat() / framesPerCycle) * 2f * kotlin.math.PI.toFloat()
+                val ankleY = 0.7f + 0.2f * kotlin.math.sin(phase)
                 
                 // Knee angle varies with ankle position
                 // At BDC (bottom), knee is more extended
