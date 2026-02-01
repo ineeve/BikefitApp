@@ -31,6 +31,28 @@ class CycleMetricsTest {
     }
 
     @Test
+    fun `AngleStats fromValues calculates standard deviation`() {
+        val values = listOf(10f, 20f, 30f, 40f, 50f)
+        val stats = AngleStats.fromValues(values)
+        
+        // Expected std dev for this sequence is ~14.14
+        assertTrue(stats.standardDeviation > 14f)
+        assertTrue(stats.standardDeviation < 15f)
+    }
+
+    @Test
+    fun `AngleStats fromValues with single value has zero std dev`() {
+        val stats = AngleStats.fromValues(listOf(42f))
+        assertEquals(0f, stats.standardDeviation, 0.001f)
+    }
+
+    @Test
+    fun `AngleStats fromValues with identical values has zero std dev`() {
+        val stats = AngleStats.fromValues(listOf(10f, 10f, 10f, 10f))
+        assertEquals(0f, stats.standardDeviation, 0.001f)
+    }
+
+    @Test
     fun `AngleStats range is max minus min`() {
         val stats = AngleStats(min = 25f, max = 75f, average = 50f, sampleCount = 10)
         assertEquals(50f, stats.range, 0.001f)
@@ -183,6 +205,66 @@ class CycleMetricsTest {
             side = BodySide.LEFT
         )
         assertTrue(valid.isValid)
+    }
+
+    @Test
+    fun `CycleSummary meetsQualityThreshold with sufficient cycles and quality`() {
+        val summary = CycleSummary(
+            cycleCount = 5,
+            averageKneeAngleAtBdc = 30f,
+            averageKneeAngleAtTdc = 90f,
+            averageKneeAngleRange = 60f,
+            averageHipAngle = 70f,
+            averageTorsoAngle = 45f,
+            averageCadenceRpm = 80f,
+            kneeAngleAtBdcStats = AngleStats.INVALID,
+            kneeAngleAtTdcStats = AngleStats.INVALID,
+            hipAngleStats = AngleStats.INVALID,
+            torsoAngleStats = AngleStats.INVALID,
+            side = BodySide.LEFT,
+            dataQuality = 0.8f
+        )
+        assertTrue(summary.meetsQualityThreshold)
+    }
+
+    @Test
+    fun `CycleSummary does not meet quality threshold with low quality`() {
+        val summary = CycleSummary(
+            cycleCount = 5,
+            averageKneeAngleAtBdc = 30f,
+            averageKneeAngleAtTdc = 90f,
+            averageKneeAngleRange = 60f,
+            averageHipAngle = 70f,
+            averageTorsoAngle = 45f,
+            averageCadenceRpm = 80f,
+            kneeAngleAtBdcStats = AngleStats.INVALID,
+            kneeAngleAtTdcStats = AngleStats.INVALID,
+            hipAngleStats = AngleStats.INVALID,
+            torsoAngleStats = AngleStats.INVALID,
+            side = BodySide.LEFT,
+            dataQuality = 0.3f
+        )
+        assertFalse(summary.meetsQualityThreshold)
+    }
+
+    @Test
+    fun `CycleSummary does not meet quality threshold with too few cycles`() {
+        val summary = CycleSummary(
+            cycleCount = 2,
+            averageKneeAngleAtBdc = 30f,
+            averageKneeAngleAtTdc = 90f,
+            averageKneeAngleRange = 60f,
+            averageHipAngle = 70f,
+            averageTorsoAngle = 45f,
+            averageCadenceRpm = 80f,
+            kneeAngleAtBdcStats = AngleStats.INVALID,
+            kneeAngleAtTdcStats = AngleStats.INVALID,
+            hipAngleStats = AngleStats.INVALID,
+            torsoAngleStats = AngleStats.INVALID,
+            side = BodySide.LEFT,
+            dataQuality = 0.8f
+        )
+        assertFalse(summary.meetsQualityThreshold)
     }
 
     // ==================== Helper Functions ====================

@@ -509,4 +509,165 @@ class CycleAggregatorTest {
             side = BodySide.LEFT
         )
     }
+
+    // ==================== Outlier Filtering Tests ====================
+
+    @Test
+    fun `filterOutliers removes extreme BDC angles`() {
+        val cycles = listOf(
+            createTestCycleMetrics(0, 30f, 90f),  // Normal
+            createTestCycleMetrics(1, 32f, 90f),  // Normal
+            createTestCycleMetrics(2, 31f, 90f),  // Normal
+            createTestCycleMetrics(3, 28f, 90f),  // Normal
+            createTestCycleMetrics(4, 100f, 90f)  // Outlier - extreme BDC
+        )
+
+        val filtered = CycleAggregator.filterOutliers(cycles)
+
+        // Should remove the outlier
+        assertEquals(4, filtered.size)
+        assertFalse(filtered.any { it.kneeAngleAtBdc == 100f })
+    }
+
+    @Test
+    fun `filterOutliers removes extreme cadences`() {
+        val cycles = listOf(
+            createTestCycleMetricsWithCadence(0, 80f),  // Normal
+            createTestCycleMetricsWithCadence(1, 82f),  // Normal
+            createTestCycleMetricsWithCadence(2, 78f),  // Normal
+            createTestCycleMetricsWithCadence(3, 81f),  // Normal
+            createTestCycleMetricsWithCadence(4, 200f)  // Outlier - too fast
+        )
+
+        val filtered = CycleAggregator.filterOutliers(cycles)
+
+        // Should remove the outlier
+        assertTrue(filtered.size < cycles.size)
+    }
+
+    @Test
+    fun `filterOutliers keeps all cycles when less than 4`() {
+        val cycles = listOf(
+            createTestCycleMetrics(0, 30f, 90f),
+            createTestCycleMetrics(1, 100f, 90f),  // Would be outlier with more data
+            createTestCycleMetrics(2, 32f, 90f)
+        )
+
+        val filtered = CycleAggregator.filterOutliers(cycles)
+
+        // Should keep all when sample size too small
+        assertEquals(3, filtered.size)
+    }
+
+    @Test
+    fun `calculateDataQuality returns high quality for consistent data`() {
+        val cycles = listOf(
+            createTestCycleMetrics(0, 30f, 90f),
+            createTestCycleMetrics(1, 31f, 91f),
+            createTestCycleMetrics(2, 30f, 89f),
+            createTestCycleMetrics(3, 29f, 90f),
+            createTestCycleMetrics(4, 30f, 90f)
+        )
+
+        val quality = CycleAggregator.calculateDataQuality(cycles)
+
+        // Should be high quality (> 0.7) due to low variation
+        assertTrue(quality > 0.7f)
+    }
+
+    @Test
+    fun `calculateDataQuality returns low quality for inconsistent data`() {
+        val cycles = listOf(
+            createTestCycleMetrics(0, 20f, 70f),
+            createTestCycleMetrics(1, 40f, 100f),
+            createTestCycleMetrics(2, 15f, 65f),
+            createTestCycleMetrics(3, 45f, 110f)
+        )
+
+        val quality = CycleAggregator.calculateDataQuality(cycles)
+
+        // Should be lower quality due to high variation
+        assertTrue(quality < 0.7f)
+    }
+
+    @Test
+    fun `calculateDataQuality returns low quality for few samples`() {
+        val cycles = listOf(
+            createTestCycleMetrics(0, 30f, 90f),
+            createTestCycleMetrics(1, 30f, 90f)
+        )
+
+        val quality = CycleAggregator.calculateDataQuality(cycles)
+
+        // Should be low quality (< 0.5) with only 2 samples
+        assertTrue(quality < 0.5f)
+    }
+
+    @Test
+    fun `aggregateCycles applies outlier filtering by default`() {
+        val cycles = listOf(
+            createTestCycleMetrics(0, 30f, 90f),
+            createTestCycleMetrics(1, 32f, 90f),
+            createTestCycleMetrics(2, 31f, 90f),
+            createTestCycleMetrics(3, 28f, 90f),
+            createTestCycleMetrics(4, 100f, 90f)  // Outlier
+        )
+
+        val summary = CycleAggregator.aggregateCycles(cycles, BodySide.LEFT)
+
+        // Should have removed 1 outlier
+        assertEquals(1, summary.outlierCount)
+        assertEquals(4, summary.cycleCount)
+    }
+
+    @Test
+    fun `aggregateCycles without outlier filtering keeps all cycles`() {
+        val cycles = listOf(
+            createTestCycleMetrics(0, 30f, 90f),
+            createTestCycleMetrics(1, 32f, 90f),
+            createTestCycleMetrics(2, 100f, 90f)  // Would be outlier
+        )
+
+        val summary = CycleAggregator.aggregateCycles(cycles, BodySide.LEFT, applyOutlierFiltering = false)
+
+        // Should keep all cycles
+        assertEquals(0, summary.outlierCount)
+        assertEquals(3, summary.cycleCount)
+    }
+
+    @Test
+    fun `getSummary applies outlier filtering by default`() {
+        // Create aggregator with outlier
+        for (i in 0..4) {
+            aggregator.endCycleAtBdc(i * 30L, i * 1000L, if (i == 4) 100f else 30f)
+            aggregator.addMeasurement(i * 30L + 15, i * 1000L + 500, 60f, 70f, 45f)
+        }
+        aggregator.endCycleAtBdc(150, 5000, 30f)
+
+        val summary = aggregator.getSummary()
+
+        // Should have filtered the outlier
+        assertTrue(summary.outlierCount > 0)
+        assertTrue(summary.cycleCount < aggregator.getCycleCount())
+    }
+
+    private fun createTestCycleMetricsWithCadence(
+        cycleNumber: Int,
+        cadenceRpm: Float
+    ): CycleMetrics {
+        val durationMs = (60000 / cadenceRpm).toLong()  // Convert RPM to ms
+        return CycleMetrics(
+            cycleNumber = cycleNumber,
+            startFrameNumber = cycleNumber * 30L,
+            endFrameNumber = (cycleNumber + 1) * 30L,
+            startTimestampMs = cycleNumber * durationMs,
+            endTimestampMs = (cycleNumber + 1) * durationMs,
+            kneeAngle = AngleStats(min = 30f, max = 90f, average = 60f, sampleCount = 30),
+            hipAngle = AngleStats(min = 65f, max = 75f, average = 70f, sampleCount = 30),
+            torsoAngle = AngleStats(min = 40f, max = 50f, average = 45f, sampleCount = 30),
+            kneeAngleAtBdc = 30f,
+            kneeAngleAtTdc = 90f,
+            side = BodySide.LEFT
+        )
+    }
 }
