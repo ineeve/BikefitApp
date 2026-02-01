@@ -76,28 +76,29 @@ class AnkleFlexionAtBdcTest {
     }
 
     /**
-     * Creates a test pose frame with specified ankle Y position and ankle angle.
-     * The ankle angle is created by positioning knee, ankle, and foot index appropriately.
+     * Creates a test pose frame with specified ankle Y position and approximate ankle angle.
+     * Note: The ankle angle is approximated through relative positioning rather than
+     * precise trigonometric calculation. Actual angle may vary slightly from target.
      */
     private fun createPoseFrameWithAnkleY(
         frameNumber: Long,
         timestampMs: Long,
         ankleY: Float,
-        ankleAngle: Float,
+        approximateAnkleAngle: Float,
         side: BodySide
     ): PoseFrame {
-        // Position landmarks to create the desired ankle angle
+        // Position landmarks to create an approximate ankle angle
         // Knee at fixed position, ankle in middle, foot index at specified position
         val kneeX = 0.5f
         val kneeY = 0.5f
         val ankleX = 0.5f
         
-        // Calculate foot index position to achieve desired ankle angle
-        // For simplicity, we use positioning relative to ankle
-        val footIndexX = if (ankleAngle > 100f) {
+        // Calculate foot index position to achieve approximate desired ankle angle
+        // Using simple relative positioning rather than precise trigonometry
+        val footIndexX = if (approximateAnkleAngle > 100f) {
             // Plantarflexion - foot pointing down/back
             ankleX - 0.05f
-        } else if (ankleAngle > 80f) {
+        } else if (approximateAnkleAngle > 80f) {
             // Neutral position
             ankleX + 0.05f
         } else {
@@ -105,7 +106,7 @@ class AnkleFlexionAtBdcTest {
             ankleX + 0.1f
         }
         
-        val footIndexY = if (ankleAngle > 100f) {
+        val footIndexY = if (approximateAnkleAngle > 100f) {
             // Plantarflexion
             ankleY + 0.1f
         } else {
@@ -142,6 +143,7 @@ class AnkleFlexionAtBdcTest {
         val frames = mutableListOf<PoseFrame>()
         var frameNumber = 0L
         val framesPerCycle = 10
+        val twoPi = 2f * kotlin.math.PI.toFloat()
 
         for (cycleIndex in bdcFrameNumbers.indices) {
             val bdcFrame = bdcFrameNumbers[cycleIndex]
@@ -152,7 +154,7 @@ class AnkleFlexionAtBdcTest {
                 
                 // Simulate ankle Y movement (sine wave)
                 // BDC is at the bottom (max Y), TDC at top (min Y)
-                val phase = (i.toFloat() / framesPerCycle) * 2f * kotlin.math.PI.toFloat()
+                val phase = (i.toFloat() / framesPerCycle) * twoPi
                 val ankleY = 0.7f + 0.2f * kotlin.math.sin(phase)
                 
                 // Ankle angle varies with ankle position
@@ -172,7 +174,7 @@ class AnkleFlexionAtBdcTest {
                         frameNumber = currentFrame,
                         timestampMs = currentFrame * 33, // ~30 fps
                         ankleY = ankleY,
-                        ankleAngle = ankleAngle,
+                        approximateAnkleAngle = ankleAngle,
                         side = side
                     )
                 )
@@ -280,7 +282,7 @@ class AnkleFlexionAtBdcTest {
                     frameNumber = i.toLong(),
                     timestampMs = i * 33L,
                     ankleY = ankleY,
-                    ankleAngle = 85f + i * 3f,
+                    approximateAnkleAngle = 85f + i * 3f,
                     side = BodySide.LEFT
                 )
             )
@@ -292,7 +294,7 @@ class AnkleFlexionAtBdcTest {
                 frameNumber = 5L,
                 timestampMs = 5 * 33L,
                 ankleY = 0.75f, // Maximum Y (lowest point)
-                ankleAngle = 100f,
+                approximateAnkleAngle = 100f,
                 side = BodySide.LEFT
             )
         )
@@ -305,7 +307,7 @@ class AnkleFlexionAtBdcTest {
                     frameNumber = i.toLong(),
                     timestampMs = i * 33L,
                     ankleY = ankleY,
-                    ankleAngle = 100f - (i - 5) * 3f,
+                    approximateAnkleAngle = 100f - (i - 5) * 3f,
                     side = BodySide.LEFT
                 )
             )
@@ -346,7 +348,7 @@ class AnkleFlexionAtBdcTest {
                         frameNumber = currentFrame,
                         timestampMs = currentFrame * 33,
                         ankleY = ankleY,
-                        ankleAngle = ankleAngle,
+                        approximateAnkleAngle = ankleAngle,
                         side = BodySide.LEFT
                     )
                 )
@@ -523,7 +525,7 @@ class AnkleFlexionAtBdcTest {
                         frameNumber = frameNumber,
                         timestampMs = frameNumber * 33,
                         ankleY = ankleY,
-                        ankleAngle = ankleAngle,
+                        approximateAnkleAngle = ankleAngle,
                         side = BodySide.LEFT
                     )
                 )

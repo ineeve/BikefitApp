@@ -183,10 +183,11 @@ class AnkleAngleCalculatorTest {
     @Test
     fun `calculate 60 degree angle`() {
         // Using coordinates that form 60 degrees at ankle
+        val footIndexY = kotlin.math.sqrt(3.0f) / 2f // Exact value for equilateral triangle
         val landmarks = createLandmarksWithLeg(
             kneeX = 0f, kneeY = 0f,
             ankleX = 1f, ankleY = 0f,
-            footIndexX = 0.5f, footIndexY = 0.866f, // sqrt(3)/2 ≈ 0.866
+            footIndexX = 0.5f, footIndexY = footIndexY,
             side = BodySide.LEFT
         )
 
