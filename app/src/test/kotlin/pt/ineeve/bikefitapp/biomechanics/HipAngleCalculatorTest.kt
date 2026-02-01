@@ -549,4 +549,241 @@ class HipAngleCalculatorTest {
         // Just verify it calculates a valid angle
         assertTrue(result.angle > 0f && result.angle <= 180f)
     }
+
+    // ==================== Midpoint-Based Calculation Tests ====================
+
+    /**
+     * Creates landmarks with both left and right sides at specified positions.
+     */
+    private fun createLandmarksWithBothSides(
+        leftShoulderX: Float, leftShoulderY: Float,
+        rightShoulderX: Float, rightShoulderY: Float,
+        leftHipX: Float, leftHipY: Float,
+        rightHipX: Float, rightHipY: Float,
+        leftKneeX: Float, leftKneeY: Float,
+        rightKneeX: Float, rightKneeY: Float,
+        visibility: Float = 1.0f
+    ): List<Landmark> {
+        val landmarks = MutableList(PoseLandmarkIndex.LANDMARK_COUNT) {
+            createLandmark(0f, 0f, 1.0f)
+        }
+
+        landmarks[PoseLandmarkIndex.LEFT_SHOULDER] = createLandmark(leftShoulderX, leftShoulderY, visibility)
+        landmarks[PoseLandmarkIndex.RIGHT_SHOULDER] = createLandmark(rightShoulderX, rightShoulderY, visibility)
+        landmarks[PoseLandmarkIndex.LEFT_HIP] = createLandmark(leftHipX, leftHipY, visibility)
+        landmarks[PoseLandmarkIndex.RIGHT_HIP] = createLandmark(rightHipX, rightHipY, visibility)
+        landmarks[PoseLandmarkIndex.LEFT_KNEE] = createLandmark(leftKneeX, leftKneeY, visibility)
+        landmarks[PoseLandmarkIndex.RIGHT_KNEE] = createLandmark(rightKneeX, rightKneeY, visibility)
+
+        return landmarks
+    }
+
+    @Test
+    fun `calculate hip angle from midpoints - 90 degrees`() {
+        // Create symmetrical pose with 90 degree hip angle
+        val landmarks = createLandmarksWithBothSides(
+            leftShoulderX = 0.45f, leftShoulderY = 0f,
+            rightShoulderX = 0.55f, rightShoulderY = 0f,
+            leftHipX = 0.45f, leftHipY = 1f,
+            rightHipX = 0.55f, rightHipY = 1f,
+            leftKneeX = 1.45f, leftKneeY = 1f,
+            rightKneeX = 1.55f, rightKneeY = 1f
+        )
+
+        val result = HipAngleCalculator.calculateHipAngleFromMidpoints(landmarks)
+
+        assertTrue(result.isValid)
+        assertEquals(90f, result.angle, delta)
+        assertEquals(BodySide.LEFT, result.side) // Convention for midpoint calculations
+    }
+
+    @Test
+    fun `calculate hip angle from midpoints - 180 degrees straight`() {
+        // Create straight vertical pose
+        val landmarks = createLandmarksWithBothSides(
+            leftShoulderX = 0.45f, leftShoulderY = 0f,
+            rightShoulderX = 0.55f, rightShoulderY = 0f,
+            leftHipX = 0.45f, leftHipY = 0.5f,
+            rightHipX = 0.55f, rightHipY = 0.5f,
+            leftKneeX = 0.45f, leftKneeY = 1f,
+            rightKneeX = 0.55f, rightKneeY = 1f
+        )
+
+        val result = HipAngleCalculator.calculateHipAngleFromMidpoints(landmarks)
+
+        assertTrue(result.isValid)
+        assertEquals(180f, result.angle, delta)
+    }
+
+    @Test
+    fun `calculate hip angle from midpoints with low visibility returns invalid`() {
+        val landmarks = createLandmarksWithBothSides(
+            leftShoulderX = 0.45f, leftShoulderY = 0f,
+            rightShoulderX = 0.55f, rightShoulderY = 0f,
+            leftHipX = 0.45f, leftHipY = 1f,
+            rightHipX = 0.55f, rightHipY = 1f,
+            leftKneeX = 1.45f, leftKneeY = 1f,
+            rightKneeX = 1.55f, rightKneeY = 1f,
+            visibility = 0.3f // Below default threshold
+        )
+
+        val result = HipAngleCalculator.calculateHipAngleFromMidpoints(landmarks)
+
+        assertFalse(result.isValid)
+    }
+
+    @Test
+    fun `calculate hip angle from midpoints with custom visibility threshold`() {
+        val landmarks = createLandmarksWithBothSides(
+            leftShoulderX = 0.45f, leftShoulderY = 0f,
+            rightShoulderX = 0.55f, rightShoulderY = 0f,
+            leftHipX = 0.45f, leftHipY = 1f,
+            rightHipX = 0.55f, rightHipY = 1f,
+            leftKneeX = 1.45f, leftKneeY = 1f,
+            rightKneeX = 1.55f, rightKneeY = 1f,
+            visibility = 0.4f
+        )
+
+        // With default threshold (0.5), should be invalid
+        val resultDefault = HipAngleCalculator.calculateHipAngleFromMidpoints(landmarks)
+        assertFalse(resultDefault.isValid)
+
+        // With lower threshold (0.3), should be valid
+        val resultLower = HipAngleCalculator.calculateHipAngleFromMidpoints(
+            landmarks,
+            visibilityThreshold = 0.3f
+        )
+        assertTrue(resultLower.isValid)
+        assertEquals(90f, resultLower.angle, delta)
+    }
+
+    @Test
+    fun `calculate hip angle from midpoints averages confidence from all landmarks`() {
+        val landmarks = MutableList(PoseLandmarkIndex.LANDMARK_COUNT) {
+            createLandmark(0f, 0f, 1.0f)
+        }
+
+        // Set different visibilities for all 6 landmarks
+        landmarks[PoseLandmarkIndex.LEFT_SHOULDER] = createLandmark(0.45f, 0f, 0.9f)
+        landmarks[PoseLandmarkIndex.RIGHT_SHOULDER] = createLandmark(0.55f, 0f, 0.8f)
+        landmarks[PoseLandmarkIndex.LEFT_HIP] = createLandmark(0.45f, 1f, 0.85f)
+        landmarks[PoseLandmarkIndex.RIGHT_HIP] = createLandmark(0.55f, 1f, 0.75f)
+        landmarks[PoseLandmarkIndex.LEFT_KNEE] = createLandmark(1.45f, 1f, 0.95f)
+        landmarks[PoseLandmarkIndex.RIGHT_KNEE] = createLandmark(1.55f, 1f, 0.7f)
+
+        val result = HipAngleCalculator.calculateHipAngleFromMidpoints(landmarks)
+
+        assertTrue(result.isValid)
+        // Average should be (0.9 + 0.8 + 0.85 + 0.75 + 0.95 + 0.7) / 6 = 0.825
+        assertEquals(0.825f, result.confidence, 0.01f)
+    }
+
+    @Test
+    fun `calculate hip angle from midpoints - PoseResult`() {
+        val landmarks = createLandmarksWithBothSides(
+            leftShoulderX = 0.45f, leftShoulderY = 0f,
+            rightShoulderX = 0.55f, rightShoulderY = 0f,
+            leftHipX = 0.45f, leftHipY = 1f,
+            rightHipX = 0.55f, rightHipY = 1f,
+            leftKneeX = 1.45f, leftKneeY = 1f,
+            rightKneeX = 1.55f, rightKneeY = 1f
+        )
+
+        val poseResult = PoseResult(
+            landmarks = landmarks,
+            timestampMs = 1000L,
+            isValid = true,
+            confidence = 0.9f
+        )
+
+        val result = HipAngleCalculator.calculateHipAngleFromMidpoints(poseResult)
+
+        assertTrue(result.isValid)
+        assertEquals(90f, result.angle, delta)
+    }
+
+    @Test
+    fun `calculate hip angle from midpoints - PoseFrame`() {
+        val landmarks = createLandmarksWithBothSides(
+            leftShoulderX = 0.45f, leftShoulderY = 0f,
+            rightShoulderX = 0.55f, rightShoulderY = 0f,
+            leftHipX = 0.45f, leftHipY = 1f,
+            rightHipX = 0.55f, rightHipY = 1f,
+            leftKneeX = 1.45f, leftKneeY = 1f,
+            rightKneeX = 1.55f, rightKneeY = 1f
+        )
+
+        val poseFrame = PoseFrame(
+            landmarks = landmarks,
+            timestampMs = 1000L,
+            frameNumber = 1,
+            imageWidth = 1920,
+            imageHeight = 1080,
+            confidence = 0.9f
+        )
+
+        val result = HipAngleCalculator.calculateHipAngleFromMidpoints(poseFrame)
+
+        assertTrue(result.isValid)
+        assertEquals(90f, result.angle, delta)
+    }
+
+    @Test
+    fun `calculate hip angle from midpoints returns invalid for invalid PoseResult`() {
+        val poseResult = PoseResult(
+            landmarks = emptyList(),
+            timestampMs = 1000L,
+            isValid = false,
+            confidence = 0f
+        )
+
+        val result = HipAngleCalculator.calculateHipAngleFromMidpoints(poseResult)
+
+        assertFalse(result.isValid)
+    }
+
+    @Test
+    fun `calculate hip angle from midpoints returns invalid for empty PoseFrame`() {
+        val poseFrame = PoseFrame(
+            landmarks = emptyList(),
+            timestampMs = 1000L,
+            frameNumber = 1,
+            imageWidth = 1920,
+            imageHeight = 1080,
+            confidence = 0f
+        )
+
+        val result = HipAngleCalculator.calculateHipAngleFromMidpoints(poseFrame)
+
+        assertFalse(result.isValid)
+    }
+
+    @Test
+    fun `calculate hip angle from midpoints returns invalid for insufficient landmarks`() {
+        val landmarks = listOf(createLandmark(0f, 0f, 1.0f)) // Only 1 landmark
+
+        val result = HipAngleCalculator.calculateHipAngleFromMidpoints(landmarks)
+
+        assertFalse(result.isValid)
+    }
+
+    @Test
+    fun `calculate hip angle from midpoints with asymmetric pose`() {
+        // Asymmetric pose (e.g., side view where one side is closer to camera)
+        // Left side slightly forward, right side slightly back
+        val landmarks = createLandmarksWithBothSides(
+            leftShoulderX = 0.4f, leftShoulderY = 0f,
+            rightShoulderX = 0.6f, rightShoulderY = 0f,
+            leftHipX = 0.4f, leftHipY = 1f,
+            rightHipX = 0.6f, rightHipY = 1f,
+            leftKneeX = 1.4f, leftKneeY = 1f,
+            rightKneeX = 1.6f, rightKneeY = 1f
+        )
+
+        val result = HipAngleCalculator.calculateHipAngleFromMidpoints(landmarks)
+
+        assertTrue(result.isValid)
+        // Midpoint should still give ~90 degrees
+        assertEquals(90f, result.angle, delta)
+    }
 }

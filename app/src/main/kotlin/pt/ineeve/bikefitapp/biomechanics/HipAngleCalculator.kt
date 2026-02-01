@@ -256,4 +256,122 @@ object HipAngleCalculator {
             c = Vector2D(kneeX, kneeY)
         )
     }
+
+    /**
+     * Calculates the hip angle using midpoints of shoulders and hips.
+     * 
+     * This method uses:
+     * - Torso vector: shoulder midpoint → hip midpoint
+     * - Femur vector: hip midpoint → knee midpoint
+     * 
+     * This provides a more stable measurement compared to single-side
+     * landmarks, especially when the cyclist is viewed from an angle.
+     * 
+     * @param landmarks List of 33 pose landmarks
+     * @param visibilityThreshold Minimum visibility for landmarks to be valid
+     * @return HipAngleResult with the calculated angle or invalid result
+     */
+    fun calculateHipAngleFromMidpoints(
+        landmarks: List<Landmark>,
+        visibilityThreshold: Float = DEFAULT_VISIBILITY_THRESHOLD
+    ): HipAngleResult {
+        if (landmarks.size < PoseLandmarkIndex.LANDMARK_COUNT) {
+            return HipAngleResult.invalid(BodySide.LEFT)
+        }
+
+        // Get all required landmarks
+        val leftShoulder = landmarks[PoseLandmarkIndex.LEFT_SHOULDER]
+        val rightShoulder = landmarks[PoseLandmarkIndex.RIGHT_SHOULDER]
+        val leftHip = landmarks[PoseLandmarkIndex.LEFT_HIP]
+        val rightHip = landmarks[PoseLandmarkIndex.RIGHT_HIP]
+        val leftKnee = landmarks[PoseLandmarkIndex.LEFT_KNEE]
+        val rightKnee = landmarks[PoseLandmarkIndex.RIGHT_KNEE]
+
+        // Check visibility of all landmarks
+        if (!leftShoulder.isVisible(visibilityThreshold) ||
+            !rightShoulder.isVisible(visibilityThreshold) ||
+            !leftHip.isVisible(visibilityThreshold) ||
+            !rightHip.isVisible(visibilityThreshold) ||
+            !leftKnee.isVisible(visibilityThreshold) ||
+            !rightKnee.isVisible(visibilityThreshold)) {
+            return HipAngleResult.invalid(BodySide.LEFT)
+        }
+
+        // Calculate midpoints
+        val shoulderMidpoint = Vector2D(
+            (leftShoulder.x + rightShoulder.x) / 2f,
+            (leftShoulder.y + rightShoulder.y) / 2f
+        )
+
+        val hipMidpoint = Vector2D(
+            (leftHip.x + rightHip.x) / 2f,
+            (leftHip.y + rightHip.y) / 2f
+        )
+
+        val kneeMidpoint = Vector2D(
+            (leftKnee.x + rightKnee.x) / 2f,
+            (leftKnee.y + rightKnee.y) / 2f
+        )
+
+        // Calculate angle at hip midpoint
+        val angle = Vector2D.angleAtVertex(
+            a = shoulderMidpoint,
+            b = hipMidpoint,
+            c = kneeMidpoint
+        )
+
+        // Calculate average confidence
+        val confidence = (leftShoulder.visibility + rightShoulder.visibility +
+                         leftHip.visibility + rightHip.visibility +
+                         leftKnee.visibility + rightKnee.visibility) / 6f
+
+        return HipAngleResult(
+            angle = angle,
+            side = BodySide.LEFT, // Using LEFT as convention for midpoint calculations
+            isValid = true,
+            confidence = confidence
+        )
+    }
+
+    /**
+     * Calculates the hip angle from a PoseResult using midpoints.
+     * 
+     * @param poseResult The pose detection result
+     * @param visibilityThreshold Minimum visibility for landmarks
+     * @return HipAngleResult with the calculated angle or invalid result
+     */
+    fun calculateHipAngleFromMidpoints(
+        poseResult: PoseResult,
+        visibilityThreshold: Float = DEFAULT_VISIBILITY_THRESHOLD
+    ): HipAngleResult {
+        if (!poseResult.isValid || poseResult.landmarks.isEmpty()) {
+            return HipAngleResult.invalid(BodySide.LEFT)
+        }
+
+        return calculateHipAngleFromMidpoints(
+            poseResult.landmarks,
+            visibilityThreshold
+        )
+    }
+
+    /**
+     * Calculates the hip angle from a PoseFrame using midpoints.
+     * 
+     * @param poseFrame The pose frame
+     * @param visibilityThreshold Minimum visibility for landmarks
+     * @return HipAngleResult with the calculated angle or invalid result
+     */
+    fun calculateHipAngleFromMidpoints(
+        poseFrame: PoseFrame,
+        visibilityThreshold: Float = DEFAULT_VISIBILITY_THRESHOLD
+    ): HipAngleResult {
+        if (poseFrame.landmarks.isEmpty()) {
+            return HipAngleResult.invalid(BodySide.LEFT)
+        }
+
+        return calculateHipAngleFromMidpoints(
+            poseFrame.landmarks,
+            visibilityThreshold
+        )
+    }
 }
