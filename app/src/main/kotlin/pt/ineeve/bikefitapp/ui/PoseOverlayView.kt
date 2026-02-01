@@ -177,6 +177,18 @@ class PoseOverlayView @JvmOverloads constructor(
         isAntiAlias = true
     }
 
+    enum class ScaleType {
+        FILL_CENTER, // Matches CameraX PreviewView default (Zoom to fill)
+        FIT_CENTER   // Matches ImageView fitCenter (Letterbox)
+    }
+
+    /** View scale type for mapping coordinates */
+    var scaleType: ScaleType = ScaleType.FILL_CENTER
+        set(value) {
+            field = value
+            invalidate()
+        }
+
     // ==================== State ====================
     
     private var currentPose: PoseResult? = null
@@ -322,12 +334,25 @@ class PoseOverlayView @JvmOverloads constructor(
         val viewAspectRatio = width.toFloat() / height
         val imageAspectRatio = imageWidth.toFloat() / imageHeight
         
-        val scaleFactor = if (viewAspectRatio > imageAspectRatio) {
-            // View is wider than image: scale to match width
-            width.toFloat() / imageWidth
-        } else {
-            // View is taller than image: scale to match height
-            height.toFloat() / imageHeight
+        val scaleFactor = when (scaleType) {
+            ScaleType.FILL_CENTER -> {
+                if (viewAspectRatio > imageAspectRatio) {
+                    // View is wider than image: scale to match width
+                    width.toFloat() / imageWidth
+                } else {
+                    // View is taller than image: scale to match height
+                    height.toFloat() / imageHeight
+                }
+            }
+            ScaleType.FIT_CENTER -> {
+                if (viewAspectRatio > imageAspectRatio) {
+                    // View is wider than image: scale to match height
+                    height.toFloat() / imageHeight
+                } else {
+                    // View is taller than image: scale to match width
+                    width.toFloat() / imageWidth
+                }
+            }
         }
 
         // Calculate the scaled dimensions

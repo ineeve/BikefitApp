@@ -33,6 +33,7 @@ class VideoAnalysisActivity : AppCompatActivity() {
 
     private lateinit var videoFrameView: ImageView
     private lateinit var calibrationOverlay: CalibrationOverlayView
+    private lateinit var poseOverlay: PoseOverlayView
     private lateinit var actionButton: MaterialButton
     private lateinit var progressContainer: LinearLayout
     private lateinit var progressBar: ProgressBar
@@ -65,6 +66,9 @@ class VideoAnalysisActivity : AppCompatActivity() {
         // Initialize views
         videoFrameView = findViewById(R.id.video_frame_view)
         calibrationOverlay = findViewById(R.id.calibration_overlay)
+        poseOverlay = findViewById(R.id.pose_overlay)
+        poseOverlay.scaleType = PoseOverlayView.ScaleType.FIT_CENTER
+        
         actionButton = findViewById(R.id.action_button)
         progressContainer = findViewById(R.id.progress_container)
         progressBar = findViewById(R.id.progress_bar)
@@ -224,9 +228,9 @@ class VideoAnalysisActivity : AppCompatActivity() {
             is CalibrationState.Confirmed -> CalibrationState.Confirmed(currentCalibration)
         }
     }
-
     private fun startAnalysis() {
         calibrationOverlay.visibility = View.GONE
+        poseOverlay.visibility = View.VISIBLE
         actionButton.visibility = View.GONE
         progressContainer.visibility = View.VISIBLE
         
@@ -276,9 +280,11 @@ class VideoAnalysisActivity : AppCompatActivity() {
             } catch (e: Exception) { null }
 
             if (frame != null) {
+                withContext(Dispatchers.Main) {
+                    videoFrameView.setImageBitmap(frame)
+                }
                 val timestampMs = (i * 33).toLong() // Approx timestamp if not available from frame
                 processFrame(frame, timestampMs, i.toLong())
-                frame.recycle()
             }
 
             analyzedFrames++
@@ -296,11 +302,15 @@ class VideoAnalysisActivity : AppCompatActivity() {
             finishAnalysis()
         }
     }
-    
-    private fun processFrame(bitmap: Bitmap, timestampMs: Long, frameNumber: Long) {
+    private suspend fun processFrame(bitmap: Bitmap, timestampMs: Long, frameNumber: Long) {
          val poseResult = poseLandmarkerWrapper?.detectPoseForVideo(bitmap, timestampMs) ?: PoseResult.EMPTY
          
          if (poseResult.isValid) {
+             withContext(Dispatchers.Main) {
+                 poseOverlay.setImageSourceInfo(bitmap.width, bitmap.height)
+                 poseOverlay.updatePose(poseResult)
+             }
+             
              processSideMetrics(poseResult, BodySide.RIGHT, timestampMs, frameNumber)
              processSideMetrics(poseResult, BodySide.LEFT, timestampMs, frameNumber)
          }
