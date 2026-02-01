@@ -1,0 +1,327 @@
+package pt.ineeve.bikefitapp.ui
+
+import android.graphics.Bitmap
+import android.graphics.RectF
+import android.media.MediaMetadataRetriever
+import android.net.Uri
+import android.os.Bundle
+import android.util.Log
+import android.view.View
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import pt.ineeve.bikefitapp.R
+import pt.ineeve.bikefitapp.calibration.*
+import pt.ineeve.bikefitapp.biomechanics.*
+import pt.ineeve.bikefitapp.fit.FitAnalysisInput
+import pt.ineeve.bikefitapp.fit.FitEngine
+import pt.ineeve.bikefitapp.fit.FitSummary
+import pt.ineeve.bikefitapp.pose.*
+import com.google.android.material.button.MaterialButton
+import com.google.mediapipe.tasks.vision.core.RunningMode
+
+class VideoAnalysisActivity : AppCompatActivity() {
+
+    private lateinit var videoFrameView: ImageView
+    private lateinit var calibrationOverlay: CalibrationOverlayView
+    private lateinit var actionButton: MaterialButton
+    private lateinit var progressContainer: LinearLayout
+    private lateinit var progressBar: ProgressBar
+    private lateinit var statusText: TextView
+
+    private var videoUri: Uri? = null
+    private var poseLandmarkerWrapper: PoseLandmarkerWrapper? = null
+
+    // Calibration
+    private var currentCalibration = BikeCalibration.EMPTY
+    private var calibrationState: CalibrationState = CalibrationState.WaitingForSaddle
+
+    // Analysis
+    private val pedalDetector = PedalCycleDetector()
+    private val leftCycleAggregator = CycleAggregator(BodySide.LEFT)
+    private val rightCycleAggregator = CycleAggregator(BodySide.RIGHT)
+    
+    // Video info
+    private var videoDurationMs = 0L
+
+    companion object {
+        const val EXTRA_VIDEO_URI = "extra_video_uri"
+        private const val TAG = "VideoAnalysisActivity"
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_video_analysis)
+        
+        // Initialize views
+        videoFrameView = findViewById(R.id.video_frame_view)
+        calibrationOverlay = findViewById(R.id.calibration_overlay)
+        actionButton = findViewById(R.id.action_button)
+        progressContainer = findViewById(R.id.progress_container)
+        progressBar = findViewById(R.id.progress_bar)
+        statusText = findViewById(R.id.status_text)
+
+        val uriString = intent.getStringExtra(EXTRA_VIDEO_URI)
+        if (uriString == null) {
+            finish()
+            return
+        }
+        videoUri = Uri.parse(uriString)
+
+        setupCalibrationUI()
+        loadFirstFrame()
+    }
+
+    private fun setupCalibrationUI() {
+        // Init overlay state
+        calibrationOverlay.setCalibration(currentCalibration)
+        calibrationOverlay.setState(calibrationState)
+
+        calibrationOverlay.onPointTappedListener = { x, y ->
+            handleCalibrationTap(x, y)
+        }
+
+        actionButton.setOnClickListener {
+            if (calibrationState is CalibrationState.ReadyToConfirm || calibrationState is CalibrationState.Confirmed) {
+                startAnalysis()
+            }
+        }
+    }
+
+    private fun loadFirstFrame() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val retriever = MediaMetadataRetriever()
+                retriever.setDataSource(this@VideoAnalysisActivity, videoUri)
+                
+                val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                videoDurationMs = durationStr?.toLongOrNull() ?: 0L
+
+                // Try to get first frame
+                val frame = retriever.getFrameAtTime(0)
+                
+                if (frame != null) {
+                    withContext(Dispatchers.Main) {
+                        videoFrameView.setImageBitmap(frame)
+                    }
+                }
+                retriever.release()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading video", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@VideoAnalysisActivity, "Failed to load video", Toast.LENGTH_SHORT).show()
+                    finish()
+                }
+            }
+        }
+    }
+
+    private fun handleCalibrationTap(viewNormX: Float, viewNormY: Float) {
+        // 1. De-normalize view coords to pixels
+        val viewX = viewNormX * calibrationOverlay.width
+        val viewY = viewNormY * calibrationOverlay.height
+
+        // 2. Get image rect inside ImageView
+        val imageRect = getBitmapRect(videoFrameView) ?: return
+        
+        // 3. Check if tap is inside image
+        if (!imageRect.contains(viewX, viewY)) return
+
+        // 4. Normalize relative to image
+        val imageNormX = (viewX - imageRect.left) / imageRect.width()
+        val imageNormY = (viewY - imageRect.top) / imageRect.height()
+
+        val type = calibrationState.getCurrentPointType() ?: return
+
+        val point = BikeReferencePoint(type, imageNormX, imageNormY)
+        currentCalibration = currentCalibration.withPoint(point)
+        
+        // Update state
+        proceedCalibrationState()
+        
+        // Update UI
+        calibrationOverlay.setCalibration(currentCalibration)
+        calibrationOverlay.setState(calibrationState)
+    }
+
+    private fun proceedCalibrationState() {
+        calibrationState = when (calibrationState) {
+            is CalibrationState.WaitingForSaddle -> CalibrationState.WaitingForBottomBracket
+            is CalibrationState.WaitingForBottomBracket -> CalibrationState.WaitingForHandlebar
+            is CalibrationState.WaitingForHandlebar -> {
+                actionButton.text = "Start Analysis" // or "Confirm"
+                actionButton.visibility = View.VISIBLE
+                CalibrationState.ReadyToConfirm
+            }
+            is CalibrationState.ReadyToConfirm -> CalibrationState.Confirmed(currentCalibration)
+            is CalibrationState.Confirmed -> CalibrationState.Confirmed(currentCalibration)
+        }
+    }
+
+    private fun startAnalysis() {
+        calibrationOverlay.visibility = View.GONE
+        actionButton.visibility = View.GONE
+        progressContainer.visibility = View.VISIBLE
+        
+        // Initialize Pose Detector
+        poseLandmarkerWrapper = PoseLandmarkerWrapper(
+            context = this,
+            runningMode = RunningMode.VIDEO
+        )
+        
+        lifecycleScope.launch(Dispatchers.Default) {
+             analyzeFrames()
+        }
+    }
+
+    private suspend fun analyzeFrames() {
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(this@VideoAnalysisActivity, videoUri)
+        } catch(e: Exception) {
+            withContext(Dispatchers.Main) { 
+                Toast.makeText(this@VideoAnalysisActivity, "Error reading video", Toast.LENGTH_SHORT).show()
+                finish()
+            }
+            return
+        }
+        
+        // Estimate frames
+        val frameCountStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_FRAME_COUNT)
+        val frameCount = frameCountStr?.toIntOrNull() ?: ((videoDurationMs / 33).toInt())
+        
+        var analyzedFrames = 0
+        
+        // Iterate. For short videos, process every frame (API 28+). 
+        // If API < 28, use time based.
+        val framesToProcess = if (frameCount > 0) frameCount else 1
+        
+        for (i in 0 until framesToProcess) {
+            // Check cancellation
+            if (!coroutineContext.isActive) break
+
+            val frame = try {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                     retriever.getFrameAtIndex(i)
+                } else {
+                     retriever.getFrameAtTime(i * 33333L, MediaMetadataRetriever.OPTION_CLOSEST)
+                }
+            } catch (e: Exception) { null }
+
+            if (frame != null) {
+                val timestampMs = (i * 33).toLong() // Approx timestamp if not available from frame
+                processFrame(frame, timestampMs, i.toLong())
+                frame.recycle()
+            }
+
+            analyzedFrames++
+            if (analyzedFrames % 10 == 0) {
+                withContext(Dispatchers.Main) {
+                    progressBar.progress = (analyzedFrames * 100 / framesToProcess)
+                    statusText.text = "Processing frame $analyzedFrames / $framesToProcess"
+                }
+            }
+        }
+        
+        retriever.release()
+        
+        withContext(Dispatchers.Main) {
+            finishAnalysis()
+        }
+    }
+    
+    private fun processFrame(bitmap: Bitmap, timestampMs: Long, frameNumber: Long) {
+         val poseResult = poseLandmarkerWrapper?.detectPoseForVideo(bitmap, timestampMs) ?: PoseResult.EMPTY
+         
+         if (poseResult.isValid) {
+             processSideMetrics(poseResult, BodySide.RIGHT, timestampMs, frameNumber)
+             processSideMetrics(poseResult, BodySide.LEFT, timestampMs, frameNumber)
+         }
+    }
+
+    private fun processSideMetrics(poseResult: PoseResult, side: BodySide, timestampMs: Long, frameNumber: Long) {
+        val kneeIndex = if (side == BodySide.LEFT) PoseLandmarkIndex.LEFT_KNEE else PoseLandmarkIndex.RIGHT_KNEE
+        val ankleIndex = if (side == BodySide.LEFT) PoseLandmarkIndex.LEFT_ANKLE else PoseLandmarkIndex.RIGHT_ANKLE
+        
+        val knee = poseResult.getLandmark(kneeIndex)
+        val ankle = poseResult.getLandmark(ankleIndex)
+
+        if (knee == null || ankle == null) return
+
+        val kneeResult = KneeAngleCalculator.calculateKneeAngle(poseResult, side)
+        val kneeAngle = if (kneeResult.isValid) kneeResult.angle else null
+        
+        val aggregator = if (side == BodySide.LEFT) leftCycleAggregator else rightCycleAggregator
+        
+        aggregator.addMeasurement(frameNumber, timestampMs, kneeAngle)
+        
+        val events = pedalDetector.processAnklePosition(
+            frameNumber = frameNumber,
+            timestampMs = timestampMs,
+            ankleY = ankle.y,
+            visibility = ankle.visibility,
+            side = side
+        )
+        
+        for (event in events) {
+            if (event.type == PedalExtremum.BDC) {
+                val angleAtBdc = kneeAngle ?: 0f 
+                aggregator.endCycleAtBdc(event.frameNumber, event.timestampMs, angleAtBdc)
+            }
+        }
+    }
+    
+    private fun finishAnalysis() {
+        val leftSummary = leftCycleAggregator.getSummary()
+        val rightSummary = rightCycleAggregator.getSummary()
+        
+        val cycleSummary = if (leftSummary.cycleCount >= rightSummary.cycleCount) {
+            leftSummary
+        } else {
+            rightSummary
+        }
+
+        // Must run on engine
+        val calibration = currentCalibration
+        if (!calibration.isComplete) {
+             // Should not happen if UI is correct
+             Toast.makeText(this, "Calibration incomplete", Toast.LENGTH_SHORT).show()
+             return
+        }
+
+        val input = FitAnalysisInput(
+            cycleSummary = cycleSummary,
+            bikeCalibration = calibration
+        )
+        
+        val engine = FitEngine()
+        val result = engine.analyze(input)
+        val summary = FitSummary.fromAnalysisResult(result)
+        
+        FitSummaryActivity.start(this, summary)
+        finish() 
+    }
+
+    private fun getBitmapRect(imageView: ImageView): RectF? {
+        val drawable = imageView.drawable ?: return null
+        val matrix = imageView.imageMatrix
+        
+        val rect = RectF(0f, 0f, drawable.intrinsicWidth.toFloat(), drawable.intrinsicHeight.toFloat())
+        matrix.mapRect(rect)
+        return rect
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        poseLandmarkerWrapper?.close()
+    }
+}

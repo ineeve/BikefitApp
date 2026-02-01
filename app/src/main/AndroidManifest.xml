@@ -16,15 +16,21 @@
         android:theme="@style/Theme.BikefitApp">
         
         <activity
-            android:name=".camera.CameraPreviewActivity"
+            android:name=".ui.HomeActivity"
             android:exported="true"
-            android:screenOrientation="landscape"
-            android:configChanges="orientation|screenSize">
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.BikefitApp">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".camera.CameraPreviewActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize" />
         
         <activity
             android:name=".calibration.CalibrationActivity"
@@ -37,6 +43,12 @@
             android:name=".ui.FitSummaryActivity"
             android:exported="false"
             android:label="@string/fit_analysis_title"
+            android:theme="@style/Theme.BikefitApp" />
+
+        <activity
+            android:name=".ui.VideoAnalysisActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
             android:theme="@style/Theme.BikefitApp" />
         
     </application>

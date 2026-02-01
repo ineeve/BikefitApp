@@ -7,3 +7,4 @@
 - [ ] Pedal cycle detection
 - [ ] Fit rule engine
 - [ ] Overlay visualization
+- [ ] Analyze previously recorded Video (Gallery Import)
