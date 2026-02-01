@@ -18,7 +18,7 @@ import kotlin.math.abs
  */
 class KneeOverPedalOffsetTest {
 
-    private val delta = 0.01f // Tolerance for offset comparisons
+    private val offsetTolerance = 0.01f // Tolerance for offset comparisons
 
     /**
      * Creates a test Landmark with specified coordinates and visibility.
@@ -127,7 +127,7 @@ class KneeOverPedalOffsetTest {
         assertTrue(result.isValid)
         assertTrue(result.normalizedOffset > 0f)
         assertEquals(KneeAlignment.FORWARD, result.alignment)
-        assertEquals(0.1f, result.rawOffset, delta)
+        assertEquals(0.1f, result.rawOffset, offsetTolerance)
         assertTrue(result.femurLength > 0f)
         assertEquals(BodySide.LEFT, result.side)
     }
@@ -155,7 +155,7 @@ class KneeOverPedalOffsetTest {
         assertTrue(result.isValid)
         assertTrue(result.normalizedOffset < 0f)
         assertEquals(KneeAlignment.REARWARD, result.alignment)
-        assertEquals(-0.1f, result.rawOffset, delta)
+        assertEquals(-0.1f, result.rawOffset, offsetTolerance)
         assertTrue(result.femurLength > 0f)
     }
 
@@ -178,9 +178,9 @@ class KneeOverPedalOffsetTest {
 
         // Assert
         assertTrue(result.isValid)
-        assertEquals(0.0f, result.normalizedOffset, delta)
+        assertEquals(0.0f, result.normalizedOffset, offsetTolerance)
         assertEquals(KneeAlignment.NEUTRAL, result.alignment)
-        assertEquals(0.0f, result.rawOffset, delta)
+        assertEquals(0.0f, result.rawOffset, offsetTolerance)
     }
 
     @Test
@@ -237,7 +237,7 @@ class KneeOverPedalOffsetTest {
 
         // Assert
         assertFalse(result.isValid)
-        assertEquals(0f, result.normalizedOffset, delta)
+        assertEquals(0f, result.normalizedOffset, offsetTolerance)
         assertEquals(BodySide.LEFT, result.side)
     }
 
@@ -297,7 +297,7 @@ class KneeOverPedalOffsetTest {
         assertTrue(result.isValid)
         assertTrue(result.normalizedOffset > 0f)
         assertEquals(KneeAlignment.FORWARD, result.alignment)
-        assertEquals(0.1f, result.rawOffset, delta)
+        assertEquals(0.1f, result.rawOffset, offsetTolerance)
     }
 
     @Test
@@ -396,7 +396,7 @@ class KneeOverPedalOffsetTest {
 
         // Assert
         assertTrue(result.isValid)
-        assertEquals(0.8f, result.confidence, delta)
+        assertEquals(0.8f, result.confidence, offsetTolerance)
     }
 
     @Test
@@ -443,7 +443,7 @@ class KneeOverPedalOffsetTest {
         assertTrue(result.isValid)
         assertEquals(KneeAlignment.REARWARD, result.alignment)
         assertTrue(result.normalizedOffset < 0f)
-        assertEquals(-0.1f, result.rawOffset, delta)
+        assertEquals(-0.1f, result.rawOffset, offsetTolerance)
     }
 
     @Test
