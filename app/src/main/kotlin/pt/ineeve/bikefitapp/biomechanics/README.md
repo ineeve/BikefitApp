@@ -12,7 +12,7 @@ The biomechanical analysis focuses on **four key metrics**:
 | **A. Knee Flexion/Extension (BDC)** | hip → knee → ankle | Knee angle at bottom dead center |
 | **B. Hip Angle (TDC)** | shoulder/torso → hip → knee | Minimum hip angle during crank cycle |
 | **C. Torso Angle** | shoulder → hip relative to horizontal | Back angle measurement |
-| **D. Ankle Angle (BDC)** | knee → ankle → foot index | Ankle flexion at bottom dead center |
+| **D. Ankle Plantarflexion (BDC)** | knee → ankle → foot index | Plantarflexion at bottom dead center (0° = neutral, positive = plantarflexion, typical: 20-30°) |
 
 ## Architecture
 
@@ -57,7 +57,11 @@ if (result.isValid) {
 Measures hip range of motion from shoulder-hip-knee landmarks.
 
 #### AnkleAngleCalculator
-Calculates ankle flexion/extension from knee-ankle-foot landmarks.
+Calculates ankle plantarflexion from knee-ankle-foot landmarks.
+- 0° = neutral (foot perpendicular to shin)
+- Positive = plantarflexion (foot pointing down)
+- Negative = dorsiflexion (foot pointing up)
+- Typical at BDC: 20-30°
 
 #### TorsoAngleCalculator
 Measures back angle relative to horizontal using shoulder-hip landmarks.

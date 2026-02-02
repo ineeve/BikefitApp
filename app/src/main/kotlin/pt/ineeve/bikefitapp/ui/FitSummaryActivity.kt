@@ -221,18 +221,18 @@ class FitSummaryActivity : AppCompatActivity() {
             metricTorsoStats.visibility = View.GONE
         }
         
-        // D. Ankle Angle at BDC (knee → ankle → foot index)
+        // D. Ankle Plantarflexion at BDC (knee → ankle → foot index)
         val ankleBdcStats = metrics.ankleAngleAtBdcStats
         if (ankleBdcStats.isValid) {
             metricAnkleBdcValue.text = "%.1f°".format(metrics.averageAnkleAngleAtBdc ?: 0f)
-            metricAnkleBdcRange.text = "80° - 110°"
+            metricAnkleBdcRange.text = "20° - 30°"
             metricAnkleBdcStats.text = "Min: %.1f° | Max: %.1f° | SD: %.1f°".format(
                 ankleBdcStats.min, ankleBdcStats.max, ankleBdcStats.standardDeviation
             )
             metricAnkleBdcStats.visibility = View.VISIBLE
         } else {
             metricAnkleBdcValue.text = "--"
-            metricAnkleBdcRange.text = "80° - 110°"
+            metricAnkleBdcRange.text = "20° - 30°"
             metricAnkleBdcStats.visibility = View.GONE
         }
         

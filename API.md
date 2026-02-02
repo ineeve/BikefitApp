@@ -59,7 +59,7 @@ val result = AnkleAngleCalculator.calculateAnkleAngle(
 )
 ```
 
-**Returns:** Ankle flexion angle in degrees
+**Returns:** Ankle plantarflexion angle in degrees (0° = neutral, positive = plantarflexion, typical: 20-30° at BDC)
 
 #### TorsoAngleCalculator
 

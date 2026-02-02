@@ -76,29 +76,31 @@ class AnkleFlexionAtBdcTest {
     }
 
     /**
-     * Creates a test pose frame with specified ankle Y position and approximate ankle angle.
-     * Note: The ankle angle is approximated through relative positioning rather than
+     * Creates a test pose frame with specified ankle Y position and approximate plantarflexion angle.
+     * Note: The angle is approximated through relative positioning rather than
      * precise trigonometric calculation. Actual angle may vary slightly from target.
+     * 
+     * Plantarflexion semantics: 0° = neutral, positive = plantarflexion, negative = dorsiflexion
      */
     private fun createPoseFrameWithAnkleY(
         frameNumber: Long,
         timestampMs: Long,
         ankleY: Float,
-        approximateAnkleAngle: Float,
+        approximatePlantarflexion: Float,
         side: BodySide
     ): PoseFrame {
-        // Position landmarks to create an approximate ankle angle
+        // Position landmarks to create an approximate plantarflexion angle
         // Knee at fixed position, ankle in middle, foot index at specified position
         val kneeX = 0.5f
         val kneeY = 0.5f
         val ankleX = 0.5f
         
-        // Calculate foot index position to achieve approximate desired ankle angle
+        // Calculate foot index position to achieve approximate desired plantarflexion
         // Using simple relative positioning rather than precise trigonometry
-        val footIndexX = if (approximateAnkleAngle > 100f) {
+        val footIndexX = if (approximatePlantarflexion > 10f) {
             // Plantarflexion - foot pointing down/back
             ankleX - 0.05f
-        } else if (approximateAnkleAngle > 80f) {
+        } else if (approximatePlantarflexion > -10f) {
             // Neutral position
             ankleX + 0.05f
         } else {
@@ -106,7 +108,7 @@ class AnkleFlexionAtBdcTest {
             ankleX + 0.1f
         }
         
-        val footIndexY = if (approximateAnkleAngle > 100f) {
+        val footIndexY = if (approximatePlantarflexion > 10f) {
             // Plantarflexion
             ankleY + 0.1f
         } else {
@@ -134,11 +136,13 @@ class AnkleFlexionAtBdcTest {
     /**
      * Creates a sequence of frames simulating a pedaling motion.
      * Ankle moves up and down, with BDC at the specified frames.
+     * 
+     * @param plantarflexionAtBdc Plantarflexion angle at BDC (typical: 20-30°)
      */
     private fun createPedalingSequence(
         bdcFrameNumbers: List<Long>,
         side: BodySide,
-        ankleAngleAtBdc: Float = 100f
+        plantarflexionAtBdc: Float = 20f
     ): List<PoseFrame> {
         val frames = mutableListOf<PoseFrame>()
         var frameNumber = 0L
@@ -157,16 +161,16 @@ class AnkleFlexionAtBdcTest {
                 val phase = (i.toFloat() / framesPerCycle) * twoPi
                 val ankleY = 0.7f + 0.2f * kotlin.math.sin(phase)
                 
-                // Ankle angle varies with ankle position
-                // At BDC (bottom), ankle shows plantarflexion pattern
-                val ankleAngle = if (currentFrame == bdcFrame) {
-                    ankleAngleAtBdc
+                // Plantarflexion varies with position in cycle
+                // At BDC (bottom), plantarflexion is at maximum
+                val plantarflexion = if (currentFrame == bdcFrame) {
+                    plantarflexionAtBdc
                 } else if (i < framesPerCycle / 2) {
-                    // Going down to BDC - ankle angle changing
-                    85f + (ankleAngleAtBdc - 85f) * (i.toFloat() / (framesPerCycle / 2))
+                    // Going down to BDC - plantarflexion increasing
+                    -5f + (plantarflexionAtBdc + 5f) * (i.toFloat() / (framesPerCycle / 2))
                 } else {
-                    // Going up from BDC - ankle angle changing
-                    ankleAngleAtBdc - (ankleAngleAtBdc - 85f) * ((i - framesPerCycle / 2).toFloat() / (framesPerCycle / 2))
+                    // Going up from BDC - plantarflexion decreasing
+                    plantarflexionAtBdc - (plantarflexionAtBdc + 5f) * ((i - framesPerCycle / 2).toFloat() / (framesPerCycle / 2))
                 }
 
                 frames.add(
@@ -174,7 +178,7 @@ class AnkleFlexionAtBdcTest {
                         frameNumber = currentFrame,
                         timestampMs = currentFrame * 33, // ~30 fps
                         ankleY = ankleY,
-                        approximateAnkleAngle = ankleAngle,
+                        approximatePlantarflexion = plantarflexion,
                         side = side
                     )
                 )
@@ -272,9 +276,10 @@ class AnkleFlexionAtBdcTest {
     @Test
     fun `computeFromFrames - single cycle with BDC`() {
         // Create a sequence with one clear BDC
+        // Using plantarflexion values: 0° = neutral, positive = plantarflexion
         val frames = mutableListOf<PoseFrame>()
         
-        // Frames before BDC - ankle going down
+        // Frames before BDC - plantarflexion increasing toward BDC
         for (i in 0..4) {
             val ankleY = 0.5f + i * 0.05f
             frames.add(
@@ -282,24 +287,24 @@ class AnkleFlexionAtBdcTest {
                     frameNumber = i.toLong(),
                     timestampMs = i * 33L,
                     ankleY = ankleY,
-                    approximateAnkleAngle = 85f + i * 3f,
+                    approximatePlantarflexion = 5f + i * 3f, // 5° to 17° plantarflexion
                     side = BodySide.LEFT
                 )
             )
         }
         
-        // BDC frame - ankle at lowest point (max Y)
+        // BDC frame - ankle at lowest point (max Y), max plantarflexion
         frames.add(
             createPoseFrameWithAnkleY(
                 frameNumber = 5L,
                 timestampMs = 5 * 33L,
                 ankleY = 0.75f, // Maximum Y (lowest point)
-                approximateAnkleAngle = 100f,
+                approximatePlantarflexion = 25f, // Typical plantarflexion at BDC
                 side = BodySide.LEFT
             )
         )
         
-        // Frames after BDC - ankle going up
+        // Frames after BDC - plantarflexion decreasing
         for (i in 6..10) {
             val ankleY = 0.75f - (i - 5) * 0.05f
             frames.add(
@@ -307,7 +312,7 @@ class AnkleFlexionAtBdcTest {
                     frameNumber = i.toLong(),
                     timestampMs = i * 33L,
                     ankleY = ankleY,
-                    approximateAnkleAngle = 100f - (i - 5) * 3f,
+                    approximatePlantarflexion = 25f - (i - 5) * 3f, // 22° down to 10°
                     side = BodySide.LEFT
                 )
             )
@@ -320,35 +325,37 @@ class AnkleFlexionAtBdcTest {
 
         assertTrue(result.isValid)
         assertEquals(1, result.cycleCount)
-        assertTrue(result.averageAnkleAngle > 0f)
+        // Plantarflexion at BDC should be positive
+        assertTrue("Expected positive plantarflexion, got ${result.averageAnkleAngle}", result.averageAnkleAngle > 0f)
         assertEquals(BodySide.LEFT, result.side)
     }
 
     @Test
     fun `computeFromFrames - multiple cycles averages correctly`() {
-        // Create frames with 3 BDC events at known ankle angles
+        // Create frames with 3 BDC events at known plantarflexion angles
+        // Plantarflexion: 0° = neutral, 20-30° = typical at BDC
         val bdcFrames = listOf(5L, 15L, 25L)
-        val ankleAngles = listOf(100f, 105f, 110f)
+        val plantarflexionAngles = listOf(20f, 25f, 30f)
         
         val frames = mutableListOf<PoseFrame>()
         
         for (cycleIndex in bdcFrames.indices) {
             val startFrame = cycleIndex * 10L
             val bdcFrame = bdcFrames[cycleIndex]
-            val targetAngle = ankleAngles[cycleIndex]
+            val targetPlantarflexion = plantarflexionAngles[cycleIndex]
             
             // Create frames for this cycle
             for (i in 0..9) {
                 val currentFrame = startFrame + i
                 val ankleY = if (currentFrame == bdcFrame) 0.75f else 0.5f + i * 0.025f
-                val ankleAngle = if (currentFrame == bdcFrame) targetAngle else 85f
+                val plantarflexion = if (currentFrame == bdcFrame) targetPlantarflexion else 0f
                 
                 frames.add(
                     createPoseFrameWithAnkleY(
                         frameNumber = currentFrame,
                         timestampMs = currentFrame * 33,
                         ankleY = ankleY,
-                        approximateAnkleAngle = ankleAngle,
+                        approximatePlantarflexion = plantarflexion,
                         side = BodySide.LEFT
                     )
                 )
@@ -361,11 +368,10 @@ class AnkleFlexionAtBdcTest {
         )
 
         assertTrue(result.isValid)
-        // Should detect 3 BDC events
-        assertTrue(result.cycleCount >= 1) // At least one cycle should be detected
-        assertTrue(result.averageAnkleAngle > 0f)
-        assertTrue(result.minAnkleAngle > 0f)
-        assertTrue(result.maxAnkleAngle > 0f)
+        // Should detect at least one BDC event
+        assertTrue("Expected at least 1 cycle, got ${result.cycleCount}", result.cycleCount >= 1)
+        // Plantarflexion at BDC should be positive
+        assertTrue("Expected positive plantarflexion, got ${result.averageAnkleAngle}", result.averageAnkleAngle > 0f)
         assertTrue(result.minAnkleAngle <= result.averageAnkleAngle)
         assertTrue(result.averageAnkleAngle <= result.maxAnkleAngle)
     }
@@ -375,7 +381,7 @@ class AnkleFlexionAtBdcTest {
         val frames = createPedalingSequence(
             bdcFrameNumbers = listOf(5L),
             side = BodySide.RIGHT,
-            ankleAngleAtBdc = 105f
+            plantarflexionAtBdc = 25f
         )
 
         val result = AnkleFlexionAtBdc.computeFromFrames(
@@ -400,7 +406,7 @@ class AnkleFlexionAtBdcTest {
         val frames = createPedalingSequence(
             bdcFrameNumbers = listOf(5L, 15L),
             side = BodySide.LEFT,
-            ankleAngleAtBdc = 100f
+            plantarflexionAtBdc = 25f
         )
 
         val results = AnkleFlexionAtBdc.computeAtAllBdcFrames(
@@ -512,20 +518,20 @@ class AnkleFlexionAtBdcTest {
     fun `statistics calculation - standard deviation`() {
         // Create frames with known varying ankle angles
         val frames = mutableListOf<PoseFrame>()
-        val angles = listOf(95f, 100f, 105f)
+        val plantarflexions = listOf(15f, 25f, 35f)
         
-        for (i in angles.indices) {
+        for (i in plantarflexions.indices) {
             for (j in 0..9) {
                 val frameNumber = (i * 10 + j).toLong()
                 val ankleY = if (j == 5) 0.75f else 0.5f
-                val ankleAngle = if (j == 5) angles[i] else 85f
+                val plantarflexion = if (j == 5) plantarflexions[i] else 0f
                 
                 frames.add(
                     createPoseFrameWithAnkleY(
                         frameNumber = frameNumber,
                         timestampMs = frameNumber * 33,
                         ankleY = ankleY,
-                        approximateAnkleAngle = ankleAngle,
+                        approximatePlantarflexion = plantarflexion,
                         side = BodySide.LEFT
                     )
                 )

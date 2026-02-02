@@ -8,7 +8,10 @@ import pt.ineeve.bikefitapp.pose.PoseResult
 /**
  * Result of an ankle angle calculation.
  * 
- * @param angle The ankle angle in degrees (0-180). A neutral foot position is typically ~90°.
+ * @param angle The ankle plantarflexion angle in degrees. 
+ *              0° = neutral (foot perpendicular to shin)
+ *              Positive = plantarflexion (foot pointing down, typical 20-30° at BDC)
+ *              Negative = dorsiflexion (foot pointing up)
  * @param side Which leg was analyzed
  * @param isValid Whether all required landmarks were visible
  * @param confidence Average visibility of the landmarks used
@@ -35,20 +38,20 @@ data class AnkleAngleResult(
 }
 
 /**
- * Calculates ankle angles from pose landmarks.
+ * Calculates ankle plantarflexion angles from pose landmarks.
  * 
- * The ankle angle is measured as the angle at the ankle joint formed by:
+ * The angle is calculated from the vertex angle at the ankle joint formed by:
  * - The knee landmark
  * - The ankle landmark (vertex)
  * - The foot index landmark
  * 
- * A neutral foot position (perpendicular to leg) has an angle close to 90°.
- * Plantarflexion (foot pointing down) has a larger angle (>90°).
- * Dorsiflexion (foot pointing up) has a smaller angle (<90°).
+ * The result is converted to plantarflexion: (vertex angle - 90°)
+ * - 0° = neutral (foot perpendicular to shin)
+ * - Positive values = plantarflexion (foot pointing down)
+ * - Negative values = dorsiflexion (foot pointing up)
  * 
- * For cycling, the ankle angle at the bottom of the pedal stroke (BDC)
- * indicates plantarflexion patterns, which can affect power transfer and
- * potential for Achilles tendon issues.
+ * For cycling, typical plantarflexion at BDC is 20-30°.
+ * Values > 35° may indicate Achilles tendon stress risk.
  * 
  * All functions are pure - they take input and return output without
  * modifying any state.
@@ -157,11 +160,12 @@ object AnkleAngleCalculator {
         // Calculate average confidence
         val confidence = (knee.visibility + ankle.visibility + footIndexPoint.visibility) / 3f
 
-        // Calculate angle using Vector2D
-        val angle = calculateAngleAtAnkle(knee, ankle, footIndexPoint)
+        // Calculate vertex angle using Vector2D, then convert to plantarflexion
+        val vertexAngle = calculateAngleAtAnkle(knee, ankle, footIndexPoint)
+        val plantarflexion = vertexAngle - 90f
 
         return AnkleAngleResult(
-            angle = angle,
+            angle = plantarflexion,
             side = side,
             isValid = true,
             confidence = confidence
@@ -228,7 +232,7 @@ object AnkleAngleCalculator {
     }
 
     /**
-     * Calculates the ankle angle from raw coordinate values.
+     * Calculates the ankle plantarflexion from raw coordinate values.
      * 
      * This is a convenience function for direct calculation without
      * creating Landmark objects.
@@ -239,17 +243,18 @@ object AnkleAngleCalculator {
      * @param ankleY Ankle y coordinate
      * @param footIndexX Foot index x coordinate
      * @param footIndexY Foot index y coordinate
-     * @return The ankle angle in degrees (0-180)
+     * @return The plantarflexion angle in degrees (0° = neutral, positive = plantarflexion)
      */
     fun calculateAnkleAngleFromCoordinates(
         kneeX: Float, kneeY: Float,
         ankleX: Float, ankleY: Float,
         footIndexX: Float, footIndexY: Float
     ): Float {
-        return Vector2D.angleAtVertex(
+        val vertexAngle = Vector2D.angleAtVertex(
             a = Vector2D(kneeX, kneeY),
             b = Vector2D(ankleX, ankleY),
             c = Vector2D(footIndexX, footIndexY)
         )
+        return vertexAngle - 90f
     }
 }
