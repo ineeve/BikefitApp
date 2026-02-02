@@ -34,6 +34,7 @@ import pt.ineeve.bikefitapp.pose.PoseResult
 import pt.ineeve.bikefitapp.pose.PoseLandmarkIndex
 import pt.ineeve.bikefitapp.pose.PoseFrame
 import pt.ineeve.bikefitapp.ui.AngleDisplay
+import pt.ineeve.bikefitapp.ui.AngleType
 import pt.ineeve.bikefitapp.ui.AnalysisStatus
 import pt.ineeve.bikefitapp.ui.AnalysisStatusView
 import pt.ineeve.bikefitapp.ui.BikeOverlayView
@@ -337,8 +338,8 @@ class CameraPreviewActivity : AppCompatActivity() {
         val poseResult = poseLandmarkerWrapper?.detectPoseForVideo(bitmap, timestampMs)
             ?: PoseResult.EMPTY
         
-        // Calculate knee angles for display
-        val angleDisplays = calculateKneeAngles(poseResult)
+        // Calculate all angles for display
+        val angleDisplays = calculateAllAngles(poseResult)
         
         // Update the pose overlay on the UI thread
         runOnUiThread {
@@ -355,29 +356,14 @@ class CameraPreviewActivity : AppCompatActivity() {
                 val totalCycles = cyclesLeft + cyclesRight
                 cycleMetricsOverlay.updateCycleCount(totalCycles)
                 
-                // Update instantaneous knee angle (prioritize Right if visible, else Left)
-                // In a lateral view from the right side, right knee is visible
-                val displayAngle = angleDisplays.firstOrNull { it.label == "R" } 
-                    ?: angleDisplays.firstOrNull { it.label == "L" }
-                
-                if (displayAngle != null) {
-                    cycleMetricsOverlay.updateCurrentKneeAngle(displayAngle.angle)
-                }
-                
-                // Update hip angle (try RIGHT side first, then LEFT)
-                val hipResultRight = HipAngleCalculator.calculateHipAngle(poseResult, BodySide.RIGHT)
-                val hipResultLeft = HipAngleCalculator.calculateHipAngle(poseResult, BodySide.LEFT)
-                val hipResult = if (hipResultRight.isValid) hipResultRight else hipResultLeft
-                if (hipResult.isValid) {
-                    cycleMetricsOverlay.updateCurrentHipAngle(hipResult.angle)
-                }
-                
-                // Update torso angle (try RIGHT side first, then LEFT)
-                val torsoResultRight = TorsoAngleCalculator.calculateTorsoAngle(poseResult, BodySide.RIGHT)
-                val torsoResultLeft = TorsoAngleCalculator.calculateTorsoAngle(poseResult, BodySide.LEFT)
-                val torsoResult = if (torsoResultRight.isValid) torsoResultRight else torsoResultLeft
-                if (torsoResult.isValid) {
-                    cycleMetricsOverlay.updateCurrentTorsoAngle(torsoResult.angle)
+                // Update metrics from the calculated angle displays (uses dominant side)
+                angleDisplays.forEach { display ->
+                    when (display.angleType) {
+                        AngleType.KNEE -> cycleMetricsOverlay.updateCurrentKneeAngle(display.angle)
+                        AngleType.HIP -> cycleMetricsOverlay.updateCurrentHipAngle(display.angle)
+                        AngleType.TORSO -> cycleMetricsOverlay.updateCurrentTorsoAngle(display.angle)
+                        AngleType.ANKLE -> { /* Not shown in live metrics panel */ }
+                    }
                 }
             } else {
                 cycleMetricsOverlay.visibility = View.GONE
@@ -431,13 +417,14 @@ class CameraPreviewActivity : AppCompatActivity() {
     
     /**
      * Processes pose data to detect pedal cycles and update metrics.
+     * Only processes the dominant side (the side more visible to the camera).
      */
     private fun processRealTimeMetrics(poseResult: PoseResult, timestampMs: Long, frameNumber: Long) {
         if (!hasCalibration || !poseResult.isValid) return
 
-        // Process both sides
-        processSideMetrics(poseResult, BodySide.RIGHT, timestampMs, frameNumber)
-        processSideMetrics(poseResult, BodySide.LEFT, timestampMs, frameNumber)
+        // Only process the dominant side
+        val dominantSide = detectDominantSide(poseResult)
+        processSideMetrics(poseResult, dominantSide, timestampMs, frameNumber)
     }
 
     private fun processSideMetrics(
@@ -580,46 +567,130 @@ class CameraPreviewActivity : AppCompatActivity() {
     }
     
     /**
-     * Calculates knee angles from the pose result for display on the overlay.
+     * Calculates all angles from the pose result for display on the overlay.
      * 
-     * Returns angle displays for both left and right knees if visible.
-     * The angles are positioned at the knee landmark locations.
+     * Only displays angles for the dominant side (the side more visible to the camera).
+     * Each angle includes arc data for geometric visualization.
      * 
      * @param poseResult The pose detection result
      * @return List of valid angle displays
      */
-    private fun calculateKneeAngles(poseResult: PoseResult): List<AngleDisplay> {
+    private fun calculateAllAngles(poseResult: PoseResult): List<AngleDisplay> {
         if (!poseResult.isValid) return emptyList()
+        
+        // Determine which side is more visible to the camera
+        val dominantSide = detectDominantSide(poseResult)
         
         val angles = mutableListOf<AngleDisplay>()
         
-        // Calculate left knee angle
-        val leftKneeResult = KneeAngleCalculator.calculateKneeAngle(poseResult, BodySide.LEFT)
-        if (leftKneeResult.isValid) {
+        // Get landmark indices based on dominant side
+        val kneeIndex = if (dominantSide == BodySide.LEFT) PoseLandmarkIndex.LEFT_KNEE else PoseLandmarkIndex.RIGHT_KNEE
+        val hipIndex = if (dominantSide == BodySide.LEFT) PoseLandmarkIndex.LEFT_HIP else PoseLandmarkIndex.RIGHT_HIP
+        val ankleIndex = if (dominantSide == BodySide.LEFT) PoseLandmarkIndex.LEFT_ANKLE else PoseLandmarkIndex.RIGHT_ANKLE
+        val shoulderIndex = if (dominantSide == BodySide.LEFT) PoseLandmarkIndex.LEFT_SHOULDER else PoseLandmarkIndex.RIGHT_SHOULDER
+        val footIndex = if (dominantSide == BodySide.LEFT) PoseLandmarkIndex.LEFT_FOOT_INDEX else PoseLandmarkIndex.RIGHT_FOOT_INDEX
+        val sideLabel = if (dominantSide == BodySide.LEFT) "L" else "R"
+        
+        // Calculate knee angle (Hip -> Knee -> Ankle)
+        val kneeResult = KneeAngleCalculator.calculateKneeAngle(poseResult, dominantSide)
+        if (kneeResult.isValid) {
             angles.add(
                 AngleDisplay(
-                    angle = leftKneeResult.angle,
-                    landmarkIndex = PoseLandmarkIndex.LEFT_KNEE,
+                    angle = kneeResult.angle,
+                    landmarkIndex = kneeIndex,
+                    fromLandmarkIndex = hipIndex,
+                    toLandmarkIndex = ankleIndex,
+                    angleType = AngleType.KNEE,
                     isValid = true,
-                    label = "L"
+                    label = "$sideLabel Knee"
                 )
             )
         }
         
-        // Calculate right knee angle
-        val rightKneeResult = KneeAngleCalculator.calculateKneeAngle(poseResult, BodySide.RIGHT)
-        if (rightKneeResult.isValid) {
+        // Calculate hip angle (Shoulder -> Hip -> Knee)
+        val hipResult = HipAngleCalculator.calculateHipAngle(poseResult, dominantSide)
+        if (hipResult.isValid) {
             angles.add(
                 AngleDisplay(
-                    angle = rightKneeResult.angle,
-                    landmarkIndex = PoseLandmarkIndex.RIGHT_KNEE,
+                    angle = hipResult.angle,
+                    landmarkIndex = hipIndex,
+                    fromLandmarkIndex = shoulderIndex,
+                    toLandmarkIndex = kneeIndex,
+                    angleType = AngleType.HIP,
                     isValid = true,
-                    label = "R"
+                    label = "$sideLabel Hip"
+                )
+            )
+        }
+        
+        // Calculate ankle angle (Knee -> Ankle -> Foot Index)
+        val ankleResult = AnkleAngleCalculator.calculateAnkleAngle(poseResult, dominantSide)
+        if (ankleResult.isValid) {
+            angles.add(
+                AngleDisplay(
+                    angle = ankleResult.angle,
+                    landmarkIndex = ankleIndex,
+                    fromLandmarkIndex = kneeIndex,
+                    toLandmarkIndex = footIndex,
+                    angleType = AngleType.ANKLE,
+                    isValid = true,
+                    label = "$sideLabel Ankle"
+                )
+            )
+        }
+        
+        // Calculate torso angle (Shoulder -> Hip vs horizontal)
+        val torsoResult = TorsoAngleCalculator.calculateTorsoAngle(poseResult, dominantSide)
+        if (torsoResult.isValid) {
+            angles.add(
+                AngleDisplay(
+                    angle = torsoResult.angle,
+                    landmarkIndex = hipIndex,
+                    fromLandmarkIndex = shoulderIndex,
+                    toLandmarkIndex = -1, // Horizontal reference
+                    angleType = AngleType.TORSO,
+                    isValid = true,
+                    label = "$sideLabel Torso"
                 )
             )
         }
         
         return angles
+    }
+    
+    /**
+     * Detects which body side is more visible to the camera.
+     * 
+     * Compares the average visibility of key landmarks on each side
+     * to determine which side the user is presenting to the camera.
+     * 
+     * @param poseResult The pose detection result
+     * @return The body side with higher average visibility
+     */
+    private fun detectDominantSide(poseResult: PoseResult): BodySide {
+        val leftIndices = listOf(
+            PoseLandmarkIndex.LEFT_SHOULDER,
+            PoseLandmarkIndex.LEFT_HIP,
+            PoseLandmarkIndex.LEFT_KNEE,
+            PoseLandmarkIndex.LEFT_ANKLE
+        )
+        
+        val rightIndices = listOf(
+            PoseLandmarkIndex.RIGHT_SHOULDER,
+            PoseLandmarkIndex.RIGHT_HIP,
+            PoseLandmarkIndex.RIGHT_KNEE,
+            PoseLandmarkIndex.RIGHT_ANKLE
+        )
+        
+        val leftVisibility = leftIndices.mapNotNull { index ->
+            poseResult.getLandmark(index)?.visibility
+        }.average().takeIf { !it.isNaN() } ?: 0.0
+        
+        val rightVisibility = rightIndices.mapNotNull { index ->
+            poseResult.getLandmark(index)?.visibility
+        }.average().takeIf { !it.isNaN() } ?: 0.0
+        
+        return if (leftVisibility >= rightVisibility) BodySide.LEFT else BodySide.RIGHT
     }
     
     /**

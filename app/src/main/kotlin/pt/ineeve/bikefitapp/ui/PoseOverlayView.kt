@@ -8,27 +8,49 @@ import android.graphics.PointF
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
+import kotlin.math.atan2
 import pt.ineeve.bikefitapp.pose.Landmark
 import pt.ineeve.bikefitapp.pose.PoseLandmarkIndex
 import pt.ineeve.bikefitapp.pose.PoseResult
 
 /**
+ * Types of angles tracked for bike fit analysis.
+ * Each type has a distinct color for visualization.
+ */
+enum class AngleType {
+    KNEE,
+    HIP,
+    ANKLE,
+    TORSO
+}
+
+/**
  * Represents an angle to display on the overlay.
  * 
  * @param angle The angle value in degrees
- * @param landmarkIndex The landmark index where the angle is centered (e.g., knee)
+ * @param landmarkIndex The landmark index where the angle is centered (vertex of the angle)
+ * @param fromLandmarkIndex The first adjacent landmark index (start of first ray)
+ * @param toLandmarkIndex The second adjacent landmark index (end of second ray), or -1 for horizontal reference (torso)
+ * @param angleType The type of angle for color coding
  * @param isValid Whether the angle calculation was valid
  * @param label Optional label for the angle (e.g., "L Knee", "R Knee")
  */
 data class AngleDisplay(
     val angle: Float,
     val landmarkIndex: Int,
+    val fromLandmarkIndex: Int = -1,
+    val toLandmarkIndex: Int = -1,
+    val angleType: AngleType = AngleType.KNEE,
     val isValid: Boolean = true,
     val label: String = ""
 ) {
+    /** Whether this angle has geometric arc data for drawing */
+    val hasArcData: Boolean
+        get() = fromLandmarkIndex >= 0
+    
     companion object {
-        fun invalid(landmarkIndex: Int, label: String = ""): AngleDisplay {
-            return AngleDisplay(0f, landmarkIndex, false, label)
+        fun invalid(landmarkIndex: Int, label: String = "", angleType: AngleType = AngleType.KNEE): AngleDisplay {
+            return AngleDisplay(0f, landmarkIndex, angleType = angleType, isValid = false, label = label)
         }
     }
 }
@@ -176,6 +198,23 @@ class PoseOverlayView @JvmOverloads constructor(
         style = Paint.Style.FILL
         isAntiAlias = true
     }
+    
+    /** Paint for arc fill (semi-transparent) */
+    private val arcFillPaint = Paint().apply {
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+    
+    /** Paint for arc stroke/rays */
+    private val arcStrokePaint = Paint().apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
+        isAntiAlias = true
+        strokeCap = Paint.Cap.ROUND
+    }
+    
+    /** RectF for drawing arcs */
+    private val arcRect = RectF()
 
     enum class ScaleType {
         FILL_CENTER, // Matches CameraX PreviewView default (Zoom to fill)
@@ -438,8 +477,118 @@ class PoseOverlayView @JvmOverloads constructor(
     private fun drawAngles(canvas: Canvas) {
         for (angleDisplay in anglesToDisplay) {
             val point = transformedLandmarks[angleDisplay.landmarkIndex] ?: continue
+            // Draw geometric arc first (behind text)
+            if (angleDisplay.hasArcData) {
+                drawAngleArc(canvas, angleDisplay)
+            }
             drawAngleText(canvas, point, angleDisplay)
         }
+    }
+    
+    /**
+     * Gets the color for a specific angle type.
+     */
+    private fun getAngleColor(angleType: AngleType): Int {
+        return when (angleType) {
+            AngleType.KNEE -> KNEE_ANGLE_COLOR
+            AngleType.HIP -> HIP_ANGLE_COLOR
+            AngleType.ANKLE -> ANKLE_ANGLE_COLOR
+            AngleType.TORSO -> TORSO_ANGLE_COLOR
+        }
+    }
+    
+    /**
+     * Draws a geometric arc visualization for an angle.
+     * 
+     * The arc is drawn at the vertex (landmarkIndex) between two rays:
+     * - First ray: from vertex to fromLandmarkIndex
+     * - Second ray: from vertex to toLandmarkIndex (or horizontal for torso)
+     */
+    private fun drawAngleArc(canvas: Canvas, angleDisplay: AngleDisplay) {
+        val vertex = transformedLandmarks[angleDisplay.landmarkIndex] ?: return
+        val fromPoint = transformedLandmarks[angleDisplay.fromLandmarkIndex] ?: return
+        
+        // Use different radius for torso to avoid overlap with hip arc
+        val radius = if (angleDisplay.angleType == AngleType.TORSO) TORSO_ARC_RADIUS else ARC_RADIUS
+        
+        // Get base color for this angle type
+        val baseColor = getAngleColor(angleDisplay.angleType)
+        
+        // Set up arc fill paint (semi-transparent)
+        arcFillPaint.color = Color.argb(
+            ARC_ALPHA,
+            Color.red(baseColor),
+            Color.green(baseColor),
+            Color.blue(baseColor)
+        )
+        
+        // Set up arc stroke paint
+        arcStrokePaint.color = Color.argb(
+            ARC_STROKE_ALPHA,
+            Color.red(baseColor),
+            Color.green(baseColor),
+            Color.blue(baseColor)
+        )
+        
+        // Calculate start angle (from vertex to fromPoint)
+        val startAngle = Math.toDegrees(
+            atan2(
+                (fromPoint.y - vertex.y).toDouble(),
+                (fromPoint.x - vertex.x).toDouble()
+            )
+        ).toFloat()
+        
+        // Calculate end angle
+        val endAngle: Float
+        val toPoint: PointF?
+        
+        if (angleDisplay.toLandmarkIndex < 0) {
+            // Special case: torso angle uses horizontal reference
+            // Horizontal line to the right of the vertex
+            endAngle = 0f // 0 degrees = horizontal right
+            toPoint = PointF(vertex.x + radius, vertex.y)
+        } else {
+            toPoint = transformedLandmarks[angleDisplay.toLandmarkIndex] ?: return
+            endAngle = Math.toDegrees(
+                atan2(
+                    (toPoint.y - vertex.y).toDouble(),
+                    (toPoint.x - vertex.x).toDouble()
+                )
+            ).toFloat()
+        }
+        
+        // Calculate sweep angle (the arc angle)
+        var sweepAngle = endAngle - startAngle
+        
+        // Normalize sweep angle to draw the smaller arc
+        while (sweepAngle > 180) sweepAngle -= 360
+        while (sweepAngle < -180) sweepAngle += 360
+        
+        // Set up arc bounding rectangle centered on vertex
+        arcRect.set(
+            vertex.x - radius,
+            vertex.y - radius,
+            vertex.x + radius,
+            vertex.y + radius
+        )
+        
+        // Draw filled arc
+        canvas.drawArc(arcRect, startAngle, sweepAngle, true, arcFillPaint)
+        
+        // Draw arc outline
+        canvas.drawArc(arcRect, startAngle, sweepAngle, true, arcStrokePaint)
+        
+        // Draw ray lines from vertex to adjacent points
+        val rayLength = radius * 1.2f
+        
+        // Calculate ray endpoints (extend slightly beyond arc radius)
+        val fromRayX = vertex.x + rayLength * kotlin.math.cos(Math.toRadians(startAngle.toDouble())).toFloat()
+        val fromRayY = vertex.y + rayLength * kotlin.math.sin(Math.toRadians(startAngle.toDouble())).toFloat()
+        canvas.drawLine(vertex.x, vertex.y, fromRayX, fromRayY, arcStrokePaint)
+        
+        val toRayX = vertex.x + rayLength * kotlin.math.cos(Math.toRadians(endAngle.toDouble())).toFloat()
+        val toRayY = vertex.y + rayLength * kotlin.math.sin(Math.toRadians(endAngle.toDouble())).toFloat()
+        canvas.drawLine(vertex.x, vertex.y, toRayX, toRayY, arcStrokePaint)
     }
     
     /**
@@ -457,8 +606,13 @@ class PoseOverlayView @JvmOverloads constructor(
         val textWidth = angleTextPaint.measureText(angleText)
         val textHeight = angleTextPaint.textSize
         
-        // Position text offset from the landmark (to the right and slightly up)
-        val offsetX = ANGLE_TEXT_OFFSET_X
+        // Position text offset from the landmark
+        // Hip angles go to the left to avoid overlapping with torso
+        val offsetX = if (angleDisplay.angleType == AngleType.HIP) {
+            -(textWidth + ANGLE_TEXT_OFFSET_X + ANGLE_PADDING * 2)
+        } else {
+            ANGLE_TEXT_OFFSET_X
+        }
         val offsetY = ANGLE_TEXT_OFFSET_Y
         
         val textX = position.x + offsetX
@@ -500,6 +654,18 @@ class PoseOverlayView @JvmOverloads constructor(
         private const val ANGLE_TEXT_OFFSET_Y = -15f
         private const val ANGLE_PADDING = 8f
         private const val ANGLE_CORNER_RADIUS = 6f
+        
+        // Arc visualization constants
+        private const val ARC_RADIUS = 50f
+        private const val TORSO_ARC_RADIUS = 35f  // Smaller radius to avoid overlap with hip
+        private const val ARC_ALPHA = 100
+        private const val ARC_STROKE_ALPHA = 180
+        
+        // Distinct colors for each angle type
+        private const val KNEE_ANGLE_COLOR = 0xFF2196F3.toInt()   // Blue
+        private const val HIP_ANGLE_COLOR = 0xFF4CAF50.toInt()    // Green
+        private const val ANKLE_ANGLE_COLOR = 0xFFFF9800.toInt()  // Orange
+        private const val TORSO_ANGLE_COLOR = 0xFF9C27B0.toInt()  // Purple
         
         /**
          * Skeleton connections for full body visualization.
