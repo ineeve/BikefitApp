@@ -59,6 +59,7 @@ class VideoAnalysisActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_VIDEO_URI = "extra_video_uri"
         private const val TAG = "VideoAnalysisActivity"
+        private const val MAX_CYCLES_TO_COLLECT = 10
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -274,6 +275,13 @@ class VideoAnalysisActivity : AppCompatActivity() {
         for (i in 0 until framesToProcess) {
             // Check cancellation
             if (!coroutineContext.isActive) break
+            
+            // Stop early if we have collected enough cycles
+            val totalCyclesCollected = leftCycleAggregator.getCycleCount() + rightCycleAggregator.getCycleCount()
+            if (totalCyclesCollected >= MAX_CYCLES_TO_COLLECT) {
+                Log.d(TAG, "Stopping analysis: collected $totalCyclesCollected cycles")
+                break
+            }
 
             val frame = try {
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
