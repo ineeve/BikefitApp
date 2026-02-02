@@ -310,5 +310,39 @@ data class Vector2D(
             val bc = c - b  // Vector from B to C
             return ba.angleTo(bc)
         }
+        
+        /**
+         * Calculates the intersection point of two lines.
+         * 
+         * Line 1 is defined by points p1 and p2.
+         * Line 2 is defined by points p3 and p4.
+         * 
+         * The lines are treated as infinite (extended beyond their endpoints).
+         * 
+         * @param p1 First point on line 1
+         * @param p2 Second point on line 1
+         * @param p3 First point on line 2
+         * @param p4 Second point on line 2
+         * @return The intersection point, or null if lines are parallel
+         */
+        fun lineIntersection(p1: Vector2D, p2: Vector2D, p3: Vector2D, p4: Vector2D): Vector2D? {
+            // Line 1: p1 + t * (p2 - p1)
+            // Line 2: p3 + u * (p4 - p3)
+            val d1 = p2 - p1  // Direction of line 1
+            val d2 = p4 - p3  // Direction of line 2
+            
+            val denominator = d1.cross(d2)
+            
+            // If denominator is zero, lines are parallel
+            if (kotlin.math.abs(denominator) < EPSILON) {
+                return null
+            }
+            
+            val d3 = p3 - p1
+            val t = d3.cross(d2) / denominator
+            
+            // Calculate intersection point
+            return p1 + d1 * t
+        }
     }
 }

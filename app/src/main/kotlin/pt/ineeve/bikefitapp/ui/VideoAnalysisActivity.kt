@@ -373,6 +373,7 @@ class VideoAnalysisActivity : AppCompatActivity() {
         val ankleIndex = if (dominantSide == BodySide.LEFT) PoseLandmarkIndex.LEFT_ANKLE else PoseLandmarkIndex.RIGHT_ANKLE
         val shoulderIndex = if (dominantSide == BodySide.LEFT) PoseLandmarkIndex.LEFT_SHOULDER else PoseLandmarkIndex.RIGHT_SHOULDER
         val footIndex = if (dominantSide == BodySide.LEFT) PoseLandmarkIndex.LEFT_FOOT_INDEX else PoseLandmarkIndex.RIGHT_FOOT_INDEX
+        val heelIndex = if (dominantSide == BodySide.LEFT) PoseLandmarkIndex.LEFT_HEEL else PoseLandmarkIndex.RIGHT_HEEL
         val sideLabel = if (dominantSide == BodySide.LEFT) "L" else "R"
         
         // Calculate knee angle (Hip -> Knee -> Ankle)
@@ -403,7 +404,7 @@ class VideoAnalysisActivity : AppCompatActivity() {
             ))
         }
         
-        // Calculate ankle angle (Knee -> Ankle -> Foot Index)
+        // Calculate ankle angle (at intersection of knee-ankle line and heel-foot line)
         val ankleResult = AnkleAngleCalculator.calculateAnkleAngle(poseResult, dominantSide)
         if (ankleResult.isValid) {
             angles.add(AngleDisplay(
@@ -413,7 +414,9 @@ class VideoAnalysisActivity : AppCompatActivity() {
                 toLandmarkIndex = footIndex,
                 angleType = AngleType.ANKLE,
                 isValid = true,
-                label = "$sideLabel Ankle"
+                label = "$sideLabel Ankle",
+                customVertexX = ankleResult.intersectionX,
+                customVertexY = ankleResult.intersectionY
             ))
         }
         

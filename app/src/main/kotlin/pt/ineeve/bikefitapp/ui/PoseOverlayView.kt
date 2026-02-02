@@ -34,6 +34,8 @@ enum class AngleType {
  * @param angleType The type of angle for color coding
  * @param isValid Whether the angle calculation was valid
  * @param label Optional label for the angle (e.g., "L Knee", "R Knee")
+ * @param customVertexX Optional custom vertex X coordinate (normalized 0-1) for angles at line intersections
+ * @param customVertexY Optional custom vertex Y coordinate (normalized 0-1) for angles at line intersections
  */
 data class AngleDisplay(
     val angle: Float,
@@ -42,11 +44,17 @@ data class AngleDisplay(
     val toLandmarkIndex: Int = -1,
     val angleType: AngleType = AngleType.KNEE,
     val isValid: Boolean = true,
-    val label: String = ""
+    val label: String = "",
+    val customVertexX: Float? = null,
+    val customVertexY: Float? = null
 ) {
     /** Whether this angle has geometric arc data for drawing */
     val hasArcData: Boolean
         get() = fromLandmarkIndex >= 0
+    
+    /** Whether this angle uses a custom vertex position (not a landmark) */
+    val hasCustomVertex: Boolean
+        get() = customVertexX != null && customVertexY != null
     
     companion object {
         fun invalid(landmarkIndex: Int, label: String = "", angleType: AngleType = AngleType.KNEE): AngleDisplay {
@@ -357,6 +365,16 @@ class PoseOverlayView @JvmOverloads constructor(
     }
     
     /**
+     * Transforms normalized X, Y coordinates to view coordinates.
+     * Used for custom vertex positions that aren't at landmarks.
+     */
+    private fun transformPoint(normalizedX: Float, normalizedY: Float): PointF {
+        // Create a temporary landmark for transformation
+        val tempLandmark = Landmark(normalizedX, normalizedY, 0f, 1f, 1f)
+        return transformCoordinates(tempLandmark)
+    }
+    
+    /**
      * Transforms a landmark from normalized coordinates to view coordinates.
      * Handles proper scaling and cropping to match PreviewView's FILL_CENTER behavior.
      */
@@ -500,12 +518,19 @@ class PoseOverlayView @JvmOverloads constructor(
     /**
      * Draws a geometric arc visualization for an angle.
      * 
-     * The arc is drawn at the vertex (landmarkIndex) between two rays:
-     * - First ray: from vertex to fromLandmarkIndex
-     * - Second ray: from vertex to toLandmarkIndex (or horizontal for torso)
+     * The arc is drawn at the vertex (landmarkIndex or custom vertex) representing the actual measured angle.
+     * For hip angles, we draw the anterior (front) angle which is what the calculator returns.
+     * For torso angles, we draw from horizontal to the torso direction on the left side.
+     * For ankle angles, the vertex may be at a line intersection point (custom vertex).
      */
     private fun drawAngleArc(canvas: Canvas, angleDisplay: AngleDisplay) {
-        val vertex = transformedLandmarks[angleDisplay.landmarkIndex] ?: return
+        // Get the vertex - either from custom coordinates or from the landmark
+        val vertex: PointF = if (angleDisplay.hasCustomVertex) {
+            // Transform custom vertex coordinates from normalized to view coordinates
+            transformPoint(angleDisplay.customVertexX!!, angleDisplay.customVertexY!!)
+        } else {
+            transformedLandmarks[angleDisplay.landmarkIndex] ?: return
+        }
         val fromPoint = transformedLandmarks[angleDisplay.fromLandmarkIndex] ?: return
         
         // Use different radius for torso to avoid overlap with hip arc
@@ -530,39 +555,109 @@ class PoseOverlayView @JvmOverloads constructor(
             Color.blue(baseColor)
         )
         
-        // Calculate start angle (from vertex to fromPoint)
-        val startAngle = Math.toDegrees(
-            atan2(
-                (fromPoint.y - vertex.y).toDouble(),
-                (fromPoint.x - vertex.x).toDouble()
-            )
-        ).toFloat()
+        // Calculate angles based on type
+        val startAngle: Float
+        val sweepAngle: Float
+        val ray1Angle: Float
+        val ray2Angle: Float
         
-        // Calculate end angle
-        val endAngle: Float
-        val toPoint: PointF?
-        
-        if (angleDisplay.toLandmarkIndex < 0) {
-            // Special case: torso angle uses horizontal reference
-            // Horizontal line to the right of the vertex
-            endAngle = 0f // 0 degrees = horizontal right
-            toPoint = PointF(vertex.x + radius, vertex.y)
-        } else {
-            toPoint = transformedLandmarks[angleDisplay.toLandmarkIndex] ?: return
-            endAngle = Math.toDegrees(
-                atan2(
-                    (toPoint.y - vertex.y).toDouble(),
-                    (toPoint.x - vertex.x).toDouble()
-                )
-            ).toFloat()
+        when (angleDisplay.angleType) {
+            AngleType.TORSO -> {
+                // Torso: angle from horizontal to the hip-shoulder segment
+                // Calculate the actual direction from hip to shoulder
+                val hipToShoulderAngle = Math.toDegrees(
+                    atan2(
+                        (fromPoint.y - vertex.y).toDouble(),
+                        (fromPoint.x - vertex.x).toDouble()
+                    )
+                ).toFloat()
+                
+                // Start from horizontal left (180°) and sweep to the shoulder direction
+                startAngle = 180f
+                // Calculate sweep from horizontal to the shoulder direction
+                var sweep = hipToShoulderAngle - 180f
+                // Normalize to sweep the shorter arc
+                while (sweep > 180) sweep -= 360
+                while (sweep < -180) sweep += 360
+                sweepAngle = sweep
+                ray1Angle = 180f  // Horizontal left
+                ray2Angle = hipToShoulderAngle  // Toward the shoulder
+            }
+            AngleType.HIP -> {
+                // Hip: the returned angle is the anterior (front) angle
+                // We want to show the angle between thigh and torso at the front of the body
+                // Calculate direction from hip to knee (thigh)
+                val toPoint = transformedLandmarks[angleDisplay.toLandmarkIndex] ?: return
+                val thighAngle = Math.toDegrees(
+                    atan2(
+                        (toPoint.y - vertex.y).toDouble(),
+                        (toPoint.x - vertex.x).toDouble()
+                    )
+                ).toFloat()
+                
+                // Start from thigh direction and sweep the actual hip angle value
+                startAngle = thighAngle
+                // Sweep toward the torso (anterior angle is at the front)
+                sweepAngle = -angleDisplay.angle  // Negative to sweep toward front of body
+                ray1Angle = thighAngle
+                ray2Angle = thighAngle - angleDisplay.angle
+            }
+            AngleType.ANKLE -> {
+                // Ankle: plantarflexion angle relative to horizontal
+                // The angle value is: 0° = foot parallel to ground, + = toes down, - = toes up
+                // Calculate direction from vertex (intersection) to foot
+                val toPoint = transformedLandmarks[angleDisplay.toLandmarkIndex] ?: return
+                val footAngle = Math.toDegrees(
+                    atan2(
+                        (toPoint.y - vertex.y).toDouble(),
+                        (toPoint.x - vertex.x).toDouble()
+                    )
+                ).toFloat()
+                
+                // Draw from horizontal to foot direction
+                // Horizontal reference depends on which way the foot is pointing
+                // If foot is pointing generally right (0° ± 90°), use 0° horizontal
+                // If foot is pointing generally left (180° ± 90°), use 180° horizontal
+                val horizontalRef = if (kotlin.math.abs(footAngle) < 90f || kotlin.math.abs(footAngle) > 270f) 0f else 180f
+                
+                startAngle = horizontalRef
+                var sweep = footAngle - horizontalRef
+                // Normalize to draw the shorter arc
+                while (sweep > 180) sweep -= 360
+                while (sweep < -180) sweep += 360
+                sweepAngle = sweep
+                ray1Angle = horizontalRef
+                ray2Angle = footAngle
+            }
+            AngleType.KNEE -> {
+                // Knee: use the raw vertex angle calculation
+                val toPoint = transformedLandmarks[angleDisplay.toLandmarkIndex] ?: return
+                
+                val fromAngle = Math.toDegrees(
+                    atan2(
+                        (fromPoint.y - vertex.y).toDouble(),
+                        (fromPoint.x - vertex.x).toDouble()
+                    )
+                ).toFloat()
+                
+                val toAngle = Math.toDegrees(
+                    atan2(
+                        (toPoint.y - vertex.y).toDouble(),
+                        (toPoint.x - vertex.x).toDouble()
+                    )
+                ).toFloat()
+                
+                startAngle = fromAngle
+                var sweep = toAngle - fromAngle
+                
+                // Normalize sweep angle to draw the smaller arc
+                while (sweep > 180) sweep -= 360
+                while (sweep < -180) sweep += 360
+                sweepAngle = sweep
+                ray1Angle = fromAngle
+                ray2Angle = toAngle
+            }
         }
-        
-        // Calculate sweep angle (the arc angle)
-        var sweepAngle = endAngle - startAngle
-        
-        // Normalize sweep angle to draw the smaller arc
-        while (sweepAngle > 180) sweepAngle -= 360
-        while (sweepAngle < -180) sweepAngle += 360
         
         // Set up arc bounding rectangle centered on vertex
         arcRect.set(
@@ -578,17 +673,18 @@ class PoseOverlayView @JvmOverloads constructor(
         // Draw arc outline
         canvas.drawArc(arcRect, startAngle, sweepAngle, true, arcStrokePaint)
         
-        // Draw ray lines from vertex to adjacent points
+        // Draw ray lines from vertex to the arc edges
         val rayLength = radius * 1.2f
         
-        // Calculate ray endpoints (extend slightly beyond arc radius)
-        val fromRayX = vertex.x + rayLength * kotlin.math.cos(Math.toRadians(startAngle.toDouble())).toFloat()
-        val fromRayY = vertex.y + rayLength * kotlin.math.sin(Math.toRadians(startAngle.toDouble())).toFloat()
-        canvas.drawLine(vertex.x, vertex.y, fromRayX, fromRayY, arcStrokePaint)
+        // Draw first ray
+        val ray1X = vertex.x + rayLength * kotlin.math.cos(Math.toRadians(ray1Angle.toDouble())).toFloat()
+        val ray1Y = vertex.y + rayLength * kotlin.math.sin(Math.toRadians(ray1Angle.toDouble())).toFloat()
+        canvas.drawLine(vertex.x, vertex.y, ray1X, ray1Y, arcStrokePaint)
         
-        val toRayX = vertex.x + rayLength * kotlin.math.cos(Math.toRadians(endAngle.toDouble())).toFloat()
-        val toRayY = vertex.y + rayLength * kotlin.math.sin(Math.toRadians(endAngle.toDouble())).toFloat()
-        canvas.drawLine(vertex.x, vertex.y, toRayX, toRayY, arcStrokePaint)
+        // Draw second ray
+        val ray2X = vertex.x + rayLength * kotlin.math.cos(Math.toRadians(ray2Angle.toDouble())).toFloat()
+        val ray2Y = vertex.y + rayLength * kotlin.math.sin(Math.toRadians(ray2Angle.toDouble())).toFloat()
+        canvas.drawLine(vertex.x, vertex.y, ray2X, ray2Y, arcStrokePaint)
     }
     
     /**

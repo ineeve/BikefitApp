@@ -6,8 +6,14 @@ This document describes the key algorithms implemented in BikefitApp for pose pr
 - [Landmark Smoothing (EMA)](#landmark-smoothing-ema)
 - [Pedal Cycle Detection](#pedal-cycle-detection)
 - [Statistical Cycle Aggregation](#statistical-cycle-aggregation)
+- [Angle Calculations](#angle-calculations)
+  - [Knee Angle](#knee-angle)
+  - [Hip Angle](#hip-angle)
+  - [Ankle Angle (Line Intersection)](#ankle-angle-line-intersection)
+  - [Torso Angle](#torso-angle)
 - [KOPS Calculation](#kops-calculation)
 - [Hip Rocking Detection](#hip-rocking-detection)
+- [Angle Arc Visualization](#angle-arc-visualization)
 
 ---
 
@@ -251,6 +257,261 @@ CycleMetrics(
     frameCount = 72
 )
 ```
+
+---
+
+## Angle Calculations
+
+**Files:** 
+- [KneeAngleCalculator.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/biomechanics/KneeAngleCalculator.kt)
+- [HipAngleCalculator.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/biomechanics/HipAngleCalculator.kt)
+- [AnkleAngleCalculator.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/biomechanics/AnkleAngleCalculator.kt)
+- [TorsoAngleCalculator.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/biomechanics/TorsoAngleCalculator.kt)
+- [Vector2D.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/biomechanics/Vector2D.kt)
+
+### Purpose
+Calculate biomechanically relevant joint angles for cycling analysis using MediaPipe pose landmarks.
+
+### Common Components
+
+**Vector2D Utilities:**
+```kotlin
+// Calculate angle at vertex B between points A-B-C
+fun angleAtVertex(a: Vector2D, b: Vector2D, c: Vector2D): Float {
+    val ba = a - b  // Vector from B to A
+    val bc = c - b  // Vector from B to C
+    return ba.angleTo(bc)  // Returns angle in degrees [0, 180]
+}
+
+// Find intersection of two lines (used for ankle angle)
+fun lineIntersection(p1: Vector2D, p2: Vector2D, p3: Vector2D, p4: Vector2D): Vector2D? {
+    val d1 = p2 - p1  // Direction of line 1
+    val d2 = p4 - p3  // Direction of line 2
+    val denominator = d1.cross(d2)
+    
+    if (abs(denominator) < EPSILON) return null  // Lines are parallel
+    
+    val d3 = p3 - p1
+    val t = d3.cross(d2) / denominator
+    return p1 + d1 * t  // Intersection point
+}
+```
+
+### Knee Angle
+
+**Algorithm:** Standard vertex angle calculation at knee joint.
+
+**Landmarks:**
+- Point A: Hip (landmark 23/24)
+- Point B: Knee (landmark 25/26) - vertex
+- Point C: Ankle (landmark 27/28)
+
+**Formula:**
+```kotlin
+val hipPoint = Vector2D(hip.x, hip.y)
+val kneePoint = Vector2D(knee.x, knee.y)
+val anklePoint = Vector2D(ankle.x, ankle.y)
+
+val vertexAngle = Vector2D.angleAtVertex(hipPoint, kneePoint, anklePoint)
+```
+
+**Range:** 0-180°, typically 60-155° during pedal stroke  
+**Optimal at BDC:** 140-150° (prevents excessive knee extension)
+
+### Hip Angle
+
+**Algorithm:** Anterior (front) hip flexion angle.
+
+**Landmarks:**
+- Point A: Shoulder (landmark 11/12)
+- Point B: Hip (landmark 23/24) - vertex
+- Point C: Knee (landmark 25/26)
+
+**Formula:**
+```kotlin
+val vertexAngle = Vector2D.angleAtVertex(shoulderPoint, hipPoint, kneePoint)
+val anteriorAngle = 180f - vertexAngle  // Convert to anterior angle
+```
+
+**Conversion:** The raw vertex angle is the posterior (back) angle. We return the anterior angle (180° - vertex) which is more intuitive for cycling analysis.
+
+**Range:** Typically 30-110° during pedal stroke  
+**Optimal at TDC:** ~70-90° for efficient power transfer
+
+### Ankle Angle (Line Intersection)
+
+**Algorithm:** Plantarflexion angle calculated at the intersection of shin and foot lines.
+
+**Why Intersection Method?**  
+The traditional vertex-at-ankle method has a flaw: when the foot is parallel to the ground, it incorrectly reports a non-zero angle due to the offset between the ankle and foot index landmarks. The intersection method calculates the true geometric angle between the shin line (knee→ankle) and the foot line (heel→foot index).
+
+**Landmarks:**
+- Line 1: Knee (25/26) → Ankle (27/28) - shin line
+- Line 2: Heel (29/30) → Foot Index (31/32) - foot line
+- Vertex: Intersection point of the two lines
+
+**Algorithm Steps:**
+```kotlin
+// 1. Create vectors for both lines
+val kneePoint = Vector2D(knee.x, knee.y)
+val anklePoint = Vector2D(ankle.x, ankle.y)
+val heelPoint = Vector2D(heel.x, heel.y)
+val footPoint = Vector2D(footIndex.x, footIndex.y)
+
+// 2. Find intersection of shin line and foot line
+val intersection = Vector2D.lineIntersection(
+    kneePoint, anklePoint,  // Shin line
+    heelPoint, footPoint     // Foot line
+)
+
+// 3. Calculate angle at intersection
+val vertexAngle = Vector2D.angleAtVertex(kneePoint, intersection, footPoint)
+
+// 4. Convert to plantarflexion (0° = neutral, + = toes down, - = toes up)
+val plantarflexion = vertexAngle - 90f
+```
+
+**Physical Interpretation:**
+- **0°** = neutral (foot perpendicular to shin)
+- **Positive** = plantarflexion (toes pointing down)
+- **Negative** = dorsiflexion (toes pointing up)
+
+**Range:** Typically -10° to +35° during pedal stroke  
+**Optimal at BDC:** 20-30° plantarflexion  
+**Warning:** >35° may indicate Achilles tendon stress
+
+**Visualization Note:**  
+The arc is drawn at the computed intersection point (not at the ankle landmark). This is passed via `customVertexX` and `customVertexY` fields in `AngleDisplay`.
+
+### Torso Angle
+
+**Algorithm:** Angle of torso relative to horizontal reference.
+
+**Landmarks:**
+- Point A: Shoulder (landmark 11/12)
+- Point B: Hip (landmark 23/24)
+- Reference: Horizontal line (ground)
+
+**Formula:**
+```kotlin
+val shoulderPoint = Vector2D(shoulder.x, shoulder.y)
+val hipPoint = Vector2D(hip.x, hip.y)
+
+// Vector from hip to shoulder (torso direction)
+val torsoVector = shoulderPoint - hipPoint
+
+// Horizontal reference (pointing right)
+val horizontal = Vector2D.RIGHT
+
+// Calculate angle from horizontal
+val angle = torsoVector.angleTo(horizontal)
+
+// Normalize to [0, 90] range
+return if (angle > 90f) 180f - angle else angle
+```
+
+**Range:** 0-90°
+- **0°** = horizontal (torso parallel to ground, extreme aero)
+- **90°** = vertical (torso perpendicular to ground, upright)
+
+**Typical Values:**
+- Time trial/aero: 15-30°
+- Road racing: 30-45°
+- Endurance: 45-60°
+- Upright/city: 60-80°
+
+---
+
+## Angle Arc Visualization
+
+**File:** [PoseOverlayView.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/ui/PoseOverlayView.kt)
+
+### Purpose
+Draw geometric arc visualizations on the pose overlay to show measured angles clearly.
+
+### Algorithm
+
+Each angle is visualized with:
+1. **Filled arc** at the vertex (semi-transparent)
+2. **Arc outline** for clarity
+3. **Ray lines** extending from the vertex along both rays
+
+**Color Coding:**
+- 🔵 **Knee:** Blue (#2196F3)
+- 🟢 **Hip:** Green (#4CAF50)
+- 🟠 **Ankle:** Orange (#FF9800)
+- 🟣 **Torso:** Purple (#9C27B0)
+
+**Arc Radii:**
+- Default: 50px
+- Torso: 35px (smaller to avoid overlap with hip at same landmark)
+
+### Angle-Specific Arc Drawing
+
+**Knee & Ankle:**
+```kotlin
+// Calculate ray angles using atan2
+val fromAngle = atan2((fromPoint.y - vertex.y), (fromPoint.x - vertex.x))
+val toAngle = atan2((toPoint.y - vertex.y), (toPoint.x - vertex.x))
+
+// Normalize to draw smaller arc
+var sweep = toAngle - fromAngle
+while (sweep > 180) sweep -= 360
+while (sweep < -180) sweep += 360
+
+// Draw arc
+canvas.drawArc(arcRect, fromAngle, sweep, true, arcPaint)
+```
+
+**Hip:**
+```kotlin
+// Calculate thigh direction (hip → knee)
+val thighAngle = atan2((knee.y - hip.y), (knee.x - hip.x))
+
+// Draw from thigh toward torso (anterior angle)
+startAngle = thighAngle
+sweepAngle = -anteriorAngle  // Negative to sweep toward front
+```
+
+**Torso:**
+```kotlin
+// Calculate actual hip→shoulder direction
+val shoulderAngle = atan2((shoulder.y - hip.y), (shoulder.x - hip.x))
+
+// Draw from horizontal to shoulder direction
+startAngle = 180f  // Horizontal left
+sweepAngle = shoulderAngle - 180f  // Sweep to shoulder
+```
+
+**Custom Vertex (Ankle):**
+```kotlin
+// For ankle, vertex is at line intersection (not at landmark)
+val vertex = if (angleDisplay.hasCustomVertex) {
+    transformPoint(angleDisplay.customVertexX, angleDisplay.customVertexY)
+} else {
+    transformedLandmarks[angleDisplay.landmarkIndex]
+}
+```
+
+### Coordinate Transformation
+
+**Challenge:** Landmarks are in normalized coordinates [0, 1], but arcs must be drawn in view pixel coordinates with proper scaling, cropping, and mirroring for camera preview.
+
+**Solution:**
+```kotlin
+private fun transformPoint(normalizedX: Float, normalizedY: Float): PointF {
+    // Create temporary landmark with normalized coordinates
+    val tempLandmark = Landmark(normalizedX, normalizedY, z=0f, vis=1f, pres=1f)
+    
+    // Apply same transformation as real landmarks
+    // - Scale to match PreviewView FILL_CENTER behavior
+    // - Apply centering offsets for cropping
+    // - Mirror for front camera
+    return transformCoordinates(tempLandmark)
+}
+```
+
+This ensures custom vertex positions (like ankle intersection) render correctly alongside landmark-based vertices.
 
 ---
 
