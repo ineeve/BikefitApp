@@ -87,24 +87,28 @@ class HipAngleAtTdcTest {
 
     /**
      * Creates a pose frame with cycling position at specified ankle height.
+     * 
+     * @param vertexAngleDegrees The vertex angle at the hip (angle between torso and femur vectors).
+     *                           This is the geometric angle used to position the knee.
+     *                           The HipAngleCalculator will return hipFlexion = 180 - vertexAngle.
+     *                           Example: vertexAngle=50° → hipFlexion=130°, vertexAngle=130° → hipFlexion=50°
      */
     private fun createCyclingPoseFrame(
         frameNumber: Long,
         timestampMs: Long,
         ankleY: Float,
-        hipAngleDegrees: Float
+        vertexAngleDegrees: Float
     ): PoseFrame {
-        // Calculate positions to achieve desired hip angle
         // For simplicity, use a vertical torso and angle the leg
         val shoulderY = 0.3f
         val hipY = 0.5f
         
-        // Calculate knee position based on desired hip angle
+        // Calculate knee position based on desired vertex angle
         val shoulderX = 0.5f
         val hipX = 0.5f
         
         // Use trigonometry to place knee at correct angle
-        val angleRad = Math.toRadians(hipAngleDegrees.toDouble())
+        val angleRad = Math.toRadians(vertexAngleDegrees.toDouble())
         val legLength = 0.3f
         val kneeX = (hipX + legLength * kotlin.math.cos(angleRad + Math.PI / 2)).toFloat()
         val kneeY = (hipY + legLength * kotlin.math.sin(angleRad + Math.PI / 2)).toFloat()
@@ -167,8 +171,9 @@ class HipAngleAtTdcTest {
     }
 
     @Test
-    fun `compute at single frame with 60 degree hip angle`() {
-        // Create a more closed hip angle (typical at TDC)
+    fun `compute at single frame with hip flexion angle`() {
+        // Create a closed hip position (typical at TDC)
+        // Shoulder forward, knee high - creates hip flexion
         val landmarks = createLandmarksWithHipAngle(
             shoulderMidX = 0.5f, shoulderMidY = 0.2f,
             hipMidX = 0.5f, hipMidY = 0.5f,
@@ -187,9 +192,9 @@ class HipAngleAtTdcTest {
         val result = HipAngleAtTdc.computeAtFrame(frame)
 
         assertTrue(result.isValid)
-        // Angle should be acute (less than 90)
-        assertTrue(result.hipAngle < 90f)
+        // Hip flexion angle should be positive and reasonable for cycling
         assertTrue(result.hipAngle > 0f)
+        assertTrue(result.hipAngle < 180f)
     }
 
     @Test
@@ -260,14 +265,14 @@ class HipAngleAtTdcTest {
         // Create a sequence with varying hip angles at different heights
         // Simulate pedal cycle with TDC (ankle high) and BDC (ankle low)
         val frames = listOf(
-            createCyclingPoseFrame(0, 0, ankleY = 0.8f, hipAngleDegrees = 120f),    // BDC
-            createCyclingPoseFrame(5, 160, ankleY = 0.6f, hipAngleDegrees = 90f),   // Mid
-            createCyclingPoseFrame(10, 330, ankleY = 0.4f, hipAngleDegrees = 50f),  // TDC
-            createCyclingPoseFrame(15, 500, ankleY = 0.6f, hipAngleDegrees = 90f),  // Mid
-            createCyclingPoseFrame(20, 660, ankleY = 0.8f, hipAngleDegrees = 120f), // BDC
-            createCyclingPoseFrame(25, 830, ankleY = 0.6f, hipAngleDegrees = 90f),  // Mid
-            createCyclingPoseFrame(30, 1000, ankleY = 0.4f, hipAngleDegrees = 45f), // TDC (more closed)
-            createCyclingPoseFrame(35, 1160, ankleY = 0.6f, hipAngleDegrees = 90f)  // Mid
+            createCyclingPoseFrame(0, 0, ankleY = 0.8f, vertexAngleDegrees = 120f),    // BDC
+            createCyclingPoseFrame(5, 160, ankleY = 0.6f, vertexAngleDegrees = 90f),   // Mid
+            createCyclingPoseFrame(10, 330, ankleY = 0.4f, vertexAngleDegrees = 50f),  // TDC
+            createCyclingPoseFrame(15, 500, ankleY = 0.6f, vertexAngleDegrees = 90f),  // Mid
+            createCyclingPoseFrame(20, 660, ankleY = 0.8f, vertexAngleDegrees = 120f), // BDC
+            createCyclingPoseFrame(25, 830, ankleY = 0.6f, vertexAngleDegrees = 90f),  // Mid
+            createCyclingPoseFrame(30, 1000, ankleY = 0.4f, vertexAngleDegrees = 45f), // TDC (more closed)
+            createCyclingPoseFrame(35, 1160, ankleY = 0.6f, vertexAngleDegrees = 90f)  // Mid
         )
 
         val result = HipAngleAtTdc.computeFromFrames(frames)
@@ -282,12 +287,17 @@ class HipAngleAtTdcTest {
 
     @Test
     fun `compute at all TDC frames returns list of results`() {
+        // Create frames with clear TDC/BDC pattern including mid-points for proper detection
         val frames = listOf(
-            createCyclingPoseFrame(0, 0, ankleY = 0.8f, hipAngleDegrees = 120f),
-            createCyclingPoseFrame(10, 330, ankleY = 0.4f, hipAngleDegrees = 50f),  // TDC
-            createCyclingPoseFrame(20, 660, ankleY = 0.8f, hipAngleDegrees = 120f),
-            createCyclingPoseFrame(30, 1000, ankleY = 0.4f, hipAngleDegrees = 45f), // TDC
-            createCyclingPoseFrame(40, 1330, ankleY = 0.8f, hipAngleDegrees = 120f)
+            createCyclingPoseFrame(0, 0, ankleY = 0.8f, vertexAngleDegrees = 120f),     // BDC
+            createCyclingPoseFrame(5, 160, ankleY = 0.6f, vertexAngleDegrees = 90f),    // Mid
+            createCyclingPoseFrame(10, 330, ankleY = 0.4f, vertexAngleDegrees = 50f),   // TDC
+            createCyclingPoseFrame(15, 500, ankleY = 0.6f, vertexAngleDegrees = 90f),   // Mid
+            createCyclingPoseFrame(20, 660, ankleY = 0.8f, vertexAngleDegrees = 120f),  // BDC
+            createCyclingPoseFrame(25, 830, ankleY = 0.6f, vertexAngleDegrees = 90f),   // Mid
+            createCyclingPoseFrame(30, 1000, ankleY = 0.4f, vertexAngleDegrees = 45f),  // TDC
+            createCyclingPoseFrame(35, 1160, ankleY = 0.6f, vertexAngleDegrees = 90f),  // Mid
+            createCyclingPoseFrame(40, 1330, ankleY = 0.8f, vertexAngleDegrees = 120f)  // BDC
         )
 
         val results = HipAngleAtTdc.computeAtAllTdcFrames(frames)
@@ -296,7 +306,8 @@ class HipAngleAtTdcTest {
         assertTrue(results.isNotEmpty())
         // All results should be valid
         assertTrue(results.all { it.isValid })
-        // All hip angles should be reasonable
+        // All hip angles should be reasonable (now hip flexion = 180 - vertex)
+        // vertexAngleDegrees 50° → hipFlexion 130°, vertexAngleDegrees 45° → hipFlexion 135°
         assertTrue(results.all { it.hipAngle > 0f && it.hipAngle < 180f })
     }
 
@@ -369,13 +380,20 @@ class HipAngleAtTdcTest {
 
     @Test
     fun `summary calculates correct statistics`() {
-        // Create frames with known hip angles at TDC
+        // Create frames with known hip angles at TDC, including mid-points for proper detection
         val frames = listOf(
-            createCyclingPoseFrame(10, 330, ankleY = 0.4f, hipAngleDegrees = 50f),  // TDC
-            createCyclingPoseFrame(20, 660, ankleY = 0.8f, hipAngleDegrees = 120f),
-            createCyclingPoseFrame(30, 1000, ankleY = 0.4f, hipAngleDegrees = 60f), // TDC
-            createCyclingPoseFrame(40, 1330, ankleY = 0.8f, hipAngleDegrees = 120f),
-            createCyclingPoseFrame(50, 1660, ankleY = 0.4f, hipAngleDegrees = 40f)  // TDC
+            createCyclingPoseFrame(0, 0, ankleY = 0.8f, vertexAngleDegrees = 120f),     // BDC
+            createCyclingPoseFrame(5, 160, ankleY = 0.6f, vertexAngleDegrees = 90f),    // Mid
+            createCyclingPoseFrame(10, 330, ankleY = 0.4f, vertexAngleDegrees = 50f),   // TDC
+            createCyclingPoseFrame(15, 500, ankleY = 0.6f, vertexAngleDegrees = 90f),   // Mid
+            createCyclingPoseFrame(20, 660, ankleY = 0.8f, vertexAngleDegrees = 120f),  // BDC
+            createCyclingPoseFrame(25, 830, ankleY = 0.6f, vertexAngleDegrees = 90f),   // Mid
+            createCyclingPoseFrame(30, 1000, ankleY = 0.4f, vertexAngleDegrees = 60f),  // TDC
+            createCyclingPoseFrame(35, 1160, ankleY = 0.6f, vertexAngleDegrees = 90f),  // Mid
+            createCyclingPoseFrame(40, 1330, ankleY = 0.8f, vertexAngleDegrees = 120f), // BDC
+            createCyclingPoseFrame(45, 1500, ankleY = 0.6f, vertexAngleDegrees = 90f),  // Mid
+            createCyclingPoseFrame(50, 1660, ankleY = 0.4f, vertexAngleDegrees = 40f),  // TDC
+            createCyclingPoseFrame(55, 1830, ankleY = 0.6f, vertexAngleDegrees = 90f)   // Mid
         )
 
         val result = HipAngleAtTdc.computeFromFrames(frames)
@@ -411,9 +429,9 @@ class HipAngleAtTdcTest {
     fun `compute from frames with no TDC detected returns invalid`() {
         // Create frames with no clear TDC pattern (constant ankle height)
         val frames = listOf(
-            createCyclingPoseFrame(0, 0, ankleY = 0.6f, hipAngleDegrees = 90f),
-            createCyclingPoseFrame(10, 330, ankleY = 0.6f, hipAngleDegrees = 90f),
-            createCyclingPoseFrame(20, 660, ankleY = 0.6f, hipAngleDegrees = 90f)
+            createCyclingPoseFrame(0, 0, ankleY = 0.6f, vertexAngleDegrees = 90f),
+            createCyclingPoseFrame(10, 330, ankleY = 0.6f, vertexAngleDegrees = 90f),
+            createCyclingPoseFrame(20, 660, ankleY = 0.6f, vertexAngleDegrees = 90f)
         )
 
         val result = HipAngleAtTdc.computeFromFrames(frames)

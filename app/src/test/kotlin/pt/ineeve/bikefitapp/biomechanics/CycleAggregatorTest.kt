@@ -73,16 +73,20 @@ class CycleAggregatorTest {
             torsoAngle = null
         )
 
-        // End cycle to check
+        // End cycle to check - need valid knee angles with sufficient ROM
         aggregator.endCycleAtBdc(0, 0, null) // First BDC starts cycle
-        aggregator.addMeasurement(1, 33, 30f, null, null)
+        // Add varying knee angles to meet minimum ROM requirement
+        for (i in 1..15) {
+            val kneeAngle = 30f + (i * 4f) // Range 34-90
+            aggregator.addMeasurement(i.toLong(), i * 33L, kneeAngle, null, null)
+        }
         val cycle = aggregator.endCycleAtBdc(30, 1000, 30f)
         
         // Ensure cycle is not null before checking stats
         assertNotNull(cycle, "Cycle should have been completed")
 
-        // Only knee angle was added
-        assertEquals(1, cycle?.kneeAngle?.sampleCount)
+        // Knee angles were added (15 samples)
+        assertEquals(15, cycle?.kneeAngle?.sampleCount)
         assertEquals(0, cycle?.hipAngle?.sampleCount)
         assertEquals(0, cycle?.torsoAngle?.sampleCount)
     }
@@ -103,9 +107,11 @@ class CycleAggregatorTest {
         // First BDC starts cycle
         aggregator.endCycleAtBdc(0, 0, 30f)
 
-        // Add measurements during cycle
+        // Add measurements during cycle with enough knee ROM (range >= 40 degrees)
         for (i in 1..30) {
-            aggregator.addMeasurement(i.toLong(), i * 33L, 30f + i, 70f, 45f)
+            // Knee angle varies from 30 to 90 degrees (range = 60 degrees)
+            val kneeAngle = 30f + (i * 2f)
+            aggregator.addMeasurement(i.toLong(), i * 33L, kneeAngle, 70f, 45f)
         }
 
         // Second BDC completes cycle
@@ -118,14 +124,16 @@ class CycleAggregatorTest {
 
     @Test
     fun `multiple cycles can be completed`() {
-        // Simulate 5 complete cycles
+        // Simulate 5 complete cycles with proper knee ROM
         for (cycleNum in 0..5) {
             val startFrame = cycleNum * 30L
             aggregator.endCycleAtBdc(startFrame, startFrame * 33, 30f)
 
             for (i in 1..29) {
                 val frame = startFrame + i
-                aggregator.addMeasurement(frame, frame * 33, 50f, 70f, 45f)
+                // Vary knee angle to meet minimum ROM (40 degrees)
+                val kneeAngle = 30f + (i * 2f).coerceAtMost(60f) // Range 30-90
+                aggregator.addMeasurement(frame, frame * 33, kneeAngle, 70f, 45f)
             }
         }
 
@@ -138,7 +146,9 @@ class CycleAggregatorTest {
         aggregator.endCycleAtBdc(100, 3300, 30f)
 
         for (i in 1..30) {
-            aggregator.addMeasurement(100 + i.toLong(), 3300 + i * 33L, 50f, 70f, 45f)
+            // Vary knee angle to meet minimum ROM requirement
+            val kneeAngle = 30f + (i * 2f) // Range 32-90
+            aggregator.addMeasurement(100 + i.toLong(), 3300 + i * 33L, kneeAngle, 70f, 45f)
         }
 
         val cycle = aggregator.endCycleAtBdc(131, 4323, 30f)!!
@@ -152,7 +162,9 @@ class CycleAggregatorTest {
         aggregator.endCycleAtBdc(0, 1000, 30f)
 
         for (i in 1..30) {
-            aggregator.addMeasurement(i.toLong(), 1000 + i * 33L, 50f, 70f, 45f)
+            // Vary knee angle to meet minimum ROM requirement
+            val kneeAngle = 30f + (i * 2f) // Range 32-90
+            aggregator.addMeasurement(i.toLong(), 1000 + i * 33L, kneeAngle, 70f, 45f)
         }
 
         val cycle = aggregator.endCycleAtBdc(31, 2023, 30f)!!
@@ -185,9 +197,10 @@ class CycleAggregatorTest {
     fun `cycle has correct hip angle statistics`() {
         aggregator.endCycleAtBdc(0, 0, 30f)
 
-        // Add constant hip angle
+        // Add constant hip angle but varying knee angles for ROM
         for (i in 0..29) {
-            aggregator.addMeasurement(i.toLong(), i * 33L, 50f, 70f, null)
+            val kneeAngle = 30f + (i * 2f) // Range 30-88
+            aggregator.addMeasurement(i.toLong(), i * 33L, kneeAngle, 70f, null)
         }
 
         val cycle = aggregator.endCycleAtBdc(30, 990, 30f)!!
@@ -201,12 +214,14 @@ class CycleAggregatorTest {
     fun `cycle has correct torso angle statistics`() {
         aggregator.endCycleAtBdc(0, 0, 30f)
 
-        // Add varying torso angles
-        aggregator.addMeasurement(0, 0, 50f, null, 40f)
-        aggregator.addMeasurement(1, 33, 50f, null, 50f)
-        aggregator.addMeasurement(2, 66, 50f, null, 45f)
+        // Add varying torso angles and varying knee angles for ROM
+        // Need enough duration and knee ROM
+        aggregator.addMeasurement(0, 0, 30f, null, 40f)
+        aggregator.addMeasurement(5, 165, 50f, null, 50f)
+        aggregator.addMeasurement(10, 330, 70f, null, 45f)
+        aggregator.addMeasurement(15, 495, 90f, null, 45f)
 
-        val cycle = aggregator.endCycleAtBdc(3, 99, 30f)!!
+        val cycle = aggregator.endCycleAtBdc(20, 660, 30f)!!
 
         assertEquals(40f, cycle.torsoAngle.min, 0.001f)
         assertEquals(50f, cycle.torsoAngle.max, 0.001f)
@@ -216,7 +231,11 @@ class CycleAggregatorTest {
     @Test
     fun `cycle records knee angle at BDC`() {
         aggregator.endCycleAtBdc(0, 0, 28f)
-        aggregator.addMeasurement(1, 33, 50f, 70f, 45f)
+        // Add varying knee angles to meet ROM requirement
+        for (i in 1..15) {
+            val kneeAngle = 30f + (i * 4f) // Range 34-90
+            aggregator.addMeasurement(i.toLong(), i * 33L, kneeAngle, 70f, 45f)
+        }
         val cycle = aggregator.endCycleAtBdc(30, 990, 32f)!!
 
         assertEquals(32f, cycle.kneeAngleAtBdc)
@@ -225,12 +244,37 @@ class CycleAggregatorTest {
     @Test
     fun `cycle records knee angle at TDC`() {
         aggregator.endCycleAtBdc(0, 0, 30f)
-        aggregator.addMeasurement(1, 33, 50f, 70f, 45f)
+        // Add varying knee angles to meet ROM requirement
+        for (i in 1..15) {
+            val kneeAngle = 30f + (i * 4f)
+            aggregator.addMeasurement(i.toLong(), i * 33L, kneeAngle, 70f, 45f)
+        }
         aggregator.recordTdc(95f)
-        aggregator.addMeasurement(16, 528, 50f, 70f, 45f)
+        for (i in 16..29) {
+            val kneeAngle = 90f - ((i - 15) * 4f)
+            aggregator.addMeasurement(i.toLong(), i * 33L, kneeAngle, 70f, 45f)
+        }
         val cycle = aggregator.endCycleAtBdc(30, 990, 30f)!!
 
         assertEquals(95f, cycle.kneeAngleAtTdc)
+    }
+
+    @Test
+    fun `cycle records hip angle at TDC`() {
+        aggregator.endCycleAtBdc(0, 0, 30f)
+        // Add varying knee angles to meet ROM requirement
+        for (i in 1..15) {
+            val kneeAngle = 30f + (i * 4f)
+            aggregator.addMeasurement(i.toLong(), i * 33L, kneeAngle, 70f, 45f)
+        }
+        aggregator.recordTdc(95f, 55f) // knee angle = 95f, hip angle = 55f
+        for (i in 16..29) {
+            val kneeAngle = 90f - ((i - 15) * 4f)
+            aggregator.addMeasurement(i.toLong(), i * 33L, kneeAngle, 70f, 45f)
+        }
+        val cycle = aggregator.endCycleAtBdc(30, 990, 30f)!!
+
+        assertEquals(55f, cycle.hipAngleAtTdc)
     }
 
     // ==================== TDC-based Cycle Tests ====================
@@ -238,7 +282,11 @@ class CycleAggregatorTest {
     @Test
     fun `cycle can end at TDC`() {
         aggregator.endCycleAtTdc(0, 0, 90f)
-        aggregator.addMeasurement(1, 33, 50f, 70f, 45f)
+        // Add varying knee angles to meet ROM requirement
+        for (i in 1..29) {
+            val kneeAngle = 30f + (i * 2f) // Range 32-88
+            aggregator.addMeasurement(i.toLong(), i * 33L, kneeAngle, 70f, 45f)
+        }
         val cycle = aggregator.endCycleAtTdc(30, 990, 92f)
 
         assertNotNull(cycle)
@@ -295,11 +343,17 @@ class CycleAggregatorTest {
 
     @Test
     fun `summary calculates average cadence`() {
-        // Create cycles with known duration
+        // Create cycles with known duration and sufficient ROM
         aggregator.endCycleAtBdc(0, 0, 30f)
-        aggregator.addMeasurement(15, 500, 60f, 70f, 45f)
+        for (i in 1..15) {
+            val kneeAngle = 30f + (i * 4f) // ROM = 60 degrees
+            aggregator.addMeasurement(i.toLong(), i * 33L, kneeAngle, 70f, 45f)
+        }
         aggregator.endCycleAtBdc(30, 1000, 30f) // 1 second = 60 RPM
-        aggregator.addMeasurement(45, 1500, 60f, 70f, 45f)
+        for (i in 1..15) {
+            val kneeAngle = 30f + (i * 4f)
+            aggregator.addMeasurement((30 + i).toLong(), 1000 + i * 33L, kneeAngle, 70f, 45f)
+        }
         aggregator.endCycleAtBdc(60, 2000, 30f) // 1 second = 60 RPM
 
         val summary = aggregator.getSummary()
@@ -394,22 +448,28 @@ class CycleAggregatorTest {
     // ==================== Edge Cases ====================
 
     @Test
-    fun `cycle with only one measurement`() {
+    fun `cycle with minimal measurements still needs valid ROM`() {
         aggregator.endCycleAtBdc(0, 0, 30f)
-        aggregator.addMeasurement(1, 33, 45f, 70f, 42f)
-        val cycle = aggregator.endCycleAtBdc(2, 66, 30f)!!
+        // Add measurements with sufficient knee ROM (min 40 degrees)
+        aggregator.addMeasurement(5, 165, 30f, 70f, 42f)
+        aggregator.addMeasurement(10, 330, 70f, 70f, 42f)
+        val cycle = aggregator.endCycleAtBdc(20, 660, 30f)!!
 
-        assertEquals(1, cycle.kneeAngle.sampleCount)
-        assertEquals(45f, cycle.kneeAngle.average, 0.001f)
-        assertEquals(0f, cycle.kneeAngle.range, 0.001f)
+        assertEquals(2, cycle.kneeAngle.sampleCount)
+        assertEquals(50f, cycle.kneeAngle.average, 0.001f)
+        assertEquals(40f, cycle.kneeAngle.range, 0.001f)
     }
 
     @Test
     fun `cycle side is correct`() {
         val rightAgg = CycleAggregator(BodySide.RIGHT)
         rightAgg.endCycleAtBdc(0, 0, 30f)
-        rightAgg.addMeasurement(1, 33, 45f, 70f, 42f)
-        val cycle = rightAgg.endCycleAtBdc(2, 66, 30f)!!
+        // Add measurements with sufficient knee ROM
+        for (i in 1..15) {
+            val kneeAngle = 30f + (i * 4f)
+            rightAgg.addMeasurement(i.toLong(), i * 33L, kneeAngle, 70f, 42f)
+        }
+        val cycle = rightAgg.endCycleAtBdc(30, 990, 30f)!!
 
         assertEquals(BodySide.RIGHT, cycle.side)
     }
@@ -438,12 +498,14 @@ class CycleAggregatorTest {
             testTimeCounter += 33
         }
 
-        // Add some measurements
+        // Add measurements with varying knee angles to meet minimum ROM requirement (40 degrees)
+        // Start at 30 degrees and increase to 90 degrees (range = 60 degrees)
         for (i in 0..15) {
+            val kneeAngle = 30f + (i * 4f) // 30, 34, 38, ... 90
             aggregator.addMeasurement(
                 testFrameCounter,
                 testTimeCounter,
-                kneeAngle = 60f,
+                kneeAngle = kneeAngle,
                 hipAngle = 70f,
                 torsoAngle = 45f
             )
@@ -454,10 +516,12 @@ class CycleAggregatorTest {
         aggregator.recordTdc(tdcAngle)
 
         for (i in 0..14) {
+            // Decreasing back from 90 to 30
+            val kneeAngle = 90f - (i * 4f) // 90, 86, 82, ... 30
             aggregator.addMeasurement(
                 testFrameCounter,
                 testTimeCounter,
-                kneeAngle = 60f,
+                kneeAngle = kneeAngle,
                 hipAngle = 70f,
                 torsoAngle = 45f
             )
@@ -477,13 +541,24 @@ class CycleAggregatorTest {
             testTimeCounter += 33
         }
 
+        // Add more measurements to meet minimum duration (300ms = ~10 frames at 33ms each)
         aggregator.addMeasurement(testFrameCounter, testTimeCounter, minKnee, 70f, 45f)
         testFrameCounter++
-        testTimeCounter += 33
+        testTimeCounter += 100 // Larger step to ensure > 300ms total
+
+        // Middle measurements
+        val midKnee = (minKnee + maxKnee) / 2f
+        aggregator.addMeasurement(testFrameCounter, testTimeCounter, midKnee, 70f, 45f)
+        testFrameCounter++
+        testTimeCounter += 100
 
         aggregator.addMeasurement(testFrameCounter, testTimeCounter, maxKnee, 70f, 45f)
         testFrameCounter++
-        testTimeCounter += 33
+        testTimeCounter += 100
+
+        aggregator.addMeasurement(testFrameCounter, testTimeCounter, midKnee, 70f, 45f)
+        testFrameCounter++
+        testTimeCounter += 100
 
         aggregator.endCycleAtBdc(testFrameCounter, testTimeCounter, minKnee)
         testFrameCounter++
@@ -644,7 +719,11 @@ class CycleAggregatorTest {
         // Create aggregator with outlier
         for (i in 0..4) {
             aggregator.endCycleAtBdc(i * 30L, i * 1000L, if (i == 4) 100f else 30f)
-            aggregator.addMeasurement(i * 30L + 15, i * 1000L + 500, 60f, 70f, 45f)
+            // Add measurements with sufficient knee ROM
+            for (j in 1..15) {
+                val kneeAngle = 30f + (j * 4f)
+                aggregator.addMeasurement(i * 30L + j, i * 1000L + j * 33L, kneeAngle, 70f, 45f)
+            }
         }
         aggregator.endCycleAtBdc(150, 5000, 30f)
 

@@ -117,11 +117,12 @@ class HipAngleCalculatorTest {
         assertEquals(90f, result.angle, delta)
     }
 
-    // ==================== Straight Body Tests (180°) ====================
+    // ==================== Straight Body Tests (0° flexion) ====================
 
     @Test
-    fun `calculate 180 degree angle - straight vertical`() {
+    fun `calculate 0 degree flexion - straight vertical`() {
         // Straight vertical: shoulder at (0.5, 0), hip at (0.5, 0.5), knee at (0.5, 1)
+        // When body is straight, hip flexion angle is 0°
         val landmarks = createLandmarksWithHip(
             shoulderX = 0.5f, shoulderY = 0f,
             hipX = 0.5f, hipY = 0.5f,
@@ -135,11 +136,13 @@ class HipAngleCalculatorTest {
         )
 
         assertTrue(result.isValid)
-        assertEquals(180f, result.angle, delta)
+        assertEquals(0f, result.angle, delta)
     }
 
     @Test
-    fun `calculate 180 degree angle - straight diagonal`() {
+    fun `calculate 0 degree flexion - straight diagonal`() {
+        // Straight diagonal: all points in a line
+        // When body is straight, hip flexion angle is 0°
         val landmarks = createLandmarksWithHip(
             shoulderX = 0f, shoulderY = 0f,
             hipX = 0.5f, hipY = 0.5f,
@@ -153,45 +156,48 @@ class HipAngleCalculatorTest {
         )
 
         assertTrue(result.isValid)
-        assertEquals(180f, result.angle, delta)
+        assertEquals(0f, result.angle, delta)
     }
 
     // ==================== Other Angle Tests ====================
 
     @Test
-    fun `calculate 60 degree angle`() {
+    fun `calculate 120 degree flexion angle`() {
+        // Vertex angle is 60°, so hip flexion = 180 - 60 = 120°
         val angle = HipAngleCalculator.calculateHipAngleFromCoordinates(
             shoulderX = 0f, shoulderY = 0f,
             hipX = 1f, hipY = 0f,
             kneeX = 0.5f, kneeY = 0.866f
-        )
-
-        assertEquals(60f, angle, 1f)
-    }
-
-    @Test
-    fun `calculate 120 degree angle`() {
-        val angle = HipAngleCalculator.calculateHipAngleFromCoordinates(
-            shoulderX = 0f, shoulderY = 0f,
-            hipX = 1f, hipY = 0f,
-            kneeX = 1.5f, kneeY = 0.866f
         )
 
         assertEquals(120f, angle, 1f)
     }
 
     @Test
-    fun `calculate acute angle`() {
-        // Acute angle test - just verify calculation works for small angles
-        // Using the 60 degree test coordinates which we know work
+    fun `calculate 60 degree flexion angle`() {
+        // Vertex angle is 120°, so hip flexion = 180 - 120 = 60°
+        val angle = HipAngleCalculator.calculateHipAngleFromCoordinates(
+            shoulderX = 0f, shoulderY = 0f,
+            hipX = 1f, hipY = 0f,
+            kneeX = 1.5f, kneeY = 0.866f
+        )
+
+        assertEquals(60f, angle, 1f)
+    }
+
+    @Test
+    fun `calculate acute flexion angle`() {
+        // Vertex angle is 60° → hip flexion = 120° (obtuse)
+        // This test verifies the angle calculation works correctly
         val angle = HipAngleCalculator.calculateHipAngleFromCoordinates(
             shoulderX = 0f, shoulderY = 0f,
             hipX = 1f, hipY = 0f,
             kneeX = 0.5f, kneeY = 0.866f
         )
 
-        assertTrue(angle < 90f)
-        assertTrue(angle > 0f)
+        // Hip flexion angle should be 120° (180 - 60)
+        assertTrue(angle > 90f)
+        assertTrue(angle < 180f)
     }
 
     // ==================== Visibility Tests ====================
@@ -398,12 +404,12 @@ class HipAngleCalculatorTest {
             createLandmark(0f, 0f, 1.0f)
         }
 
-        // Left side - 90 degree angle
+        // Left side - 90 degree vertex angle → 90° hip flexion
         landmarks[PoseLandmarkIndex.LEFT_SHOULDER] = createLandmark(0f, 0f, 1.0f)
         landmarks[PoseLandmarkIndex.LEFT_HIP] = createLandmark(0f, 1f, 1.0f)
         landmarks[PoseLandmarkIndex.LEFT_KNEE] = createLandmark(1f, 1f, 1.0f)
 
-        // Right side - 180 degree angle (straight)
+        // Right side - 180 degree vertex angle (straight) → 0° hip flexion
         landmarks[PoseLandmarkIndex.RIGHT_SHOULDER] = createLandmark(0.5f, 0f, 1.0f)
         landmarks[PoseLandmarkIndex.RIGHT_HIP] = createLandmark(0.5f, 0.5f, 1.0f)
         landmarks[PoseLandmarkIndex.RIGHT_KNEE] = createLandmark(0.5f, 1f, 1.0f)
@@ -423,7 +429,7 @@ class HipAngleCalculatorTest {
 
         assertTrue(rightResult.isValid)
         assertEquals(BodySide.RIGHT, rightResult.side)
-        assertEquals(180f, rightResult.angle, delta)
+        assertEquals(0f, rightResult.angle, delta)  // Straight body = 0° flexion
     }
 
     @Test
@@ -432,12 +438,12 @@ class HipAngleCalculatorTest {
             createLandmark(0f, 0f, 1.0f)
         }
 
-        // Left side - 90 degree angle
+        // Left side - 90 degree vertex angle → 90° hip flexion
         landmarks[PoseLandmarkIndex.LEFT_SHOULDER] = createLandmark(0f, 0f, 1.0f)
         landmarks[PoseLandmarkIndex.LEFT_HIP] = createLandmark(0f, 1f, 1.0f)
         landmarks[PoseLandmarkIndex.LEFT_KNEE] = createLandmark(1f, 1f, 1.0f)
 
-        // Right side - 180 degree angle (straight)
+        // Right side - 180 degree vertex angle (straight) → 0° hip flexion
         landmarks[PoseLandmarkIndex.RIGHT_SHOULDER] = createLandmark(0.5f, 0f, 1.0f)
         landmarks[PoseLandmarkIndex.RIGHT_HIP] = createLandmark(0.5f, 0.5f, 1.0f)
         landmarks[PoseLandmarkIndex.RIGHT_KNEE] = createLandmark(0.5f, 1f, 1.0f)
@@ -457,7 +463,7 @@ class HipAngleCalculatorTest {
         assertEquals(90f, leftResult.angle, delta)
 
         assertTrue(rightResult.isValid)
-        assertEquals(180f, rightResult.angle, delta)
+        assertEquals(0f, rightResult.angle, delta)  // Straight body = 0° flexion
     }
 
     // ==================== Direct Coordinate Calculation Tests ====================
@@ -474,14 +480,15 @@ class HipAngleCalculatorTest {
     }
 
     @Test
-    fun `calculateHipAngleFromCoordinates - 180 degrees`() {
+    fun `calculateHipAngleFromCoordinates - 0 degrees flexion (straight body)`() {
+        // Straight body = 0° hip flexion
         val angle = HipAngleCalculator.calculateHipAngleFromCoordinates(
             shoulderX = 0f, shoulderY = 0f,
             hipX = 0.5f, hipY = 0.5f,
             kneeX = 1f, kneeY = 1f
         )
 
-        assertEquals(180f, angle, delta)
+        assertEquals(0f, angle, delta)
     }
 
     // ==================== Edge Cases ====================
@@ -512,7 +519,7 @@ class HipAngleCalculatorTest {
 
     @Test
     fun `realistic cycling position - relaxed upright`() {
-        // Upright position with larger hip angle
+        // Upright position with smaller hip flexion angle (more open hip)
         val landmarks = createLandmarksWithHip(
             shoulderX = 0.4f, shoulderY = 0.2f,  // Shoulder above and slightly back
             hipX = 0.5f, hipY = 0.5f,            // Hip
@@ -526,8 +533,9 @@ class HipAngleCalculatorTest {
         )
 
         assertTrue(result.isValid)
-        // Upright position should have larger hip angle (more open)
-        assertTrue(result.angle > 90f)
+        // Upright position should have smaller hip flexion angle (more open)
+        // Typical upright cycling: 55-70° hip flexion at TDC
+        assertTrue(result.angle < 90f)
     }
 
     @Test
@@ -598,8 +606,8 @@ class HipAngleCalculatorTest {
     }
 
     @Test
-    fun `calculate hip angle from midpoints - 180 degrees straight`() {
-        // Create straight vertical pose
+    fun `calculate hip angle from midpoints - 0 degrees flexion straight`() {
+        // Create straight vertical pose - 0° hip flexion
         val landmarks = createLandmarksWithBothSides(
             leftShoulderX = 0.45f, leftShoulderY = 0f,
             rightShoulderX = 0.55f, rightShoulderY = 0f,
@@ -612,7 +620,7 @@ class HipAngleCalculatorTest {
         val result = HipAngleCalculator.calculateHipAngleFromMidpoints(landmarks)
 
         assertTrue(result.isValid)
-        assertEquals(180f, result.angle, delta)
+        assertEquals(0f, result.angle, delta)
     }
 
     @Test

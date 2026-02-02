@@ -21,6 +21,7 @@ import pt.ineeve.bikefitapp.biomechanics.CycleSummary
 import pt.ineeve.bikefitapp.biomechanics.KneeAngleCalculator
 import pt.ineeve.bikefitapp.biomechanics.HipAngleCalculator
 import pt.ineeve.bikefitapp.biomechanics.TorsoAngleCalculator
+import pt.ineeve.bikefitapp.biomechanics.AnkleAngleCalculator
 import pt.ineeve.bikefitapp.biomechanics.KneeOverPedalOffset
 import pt.ineeve.bikefitapp.calibration.BikeCalibration
 import pt.ineeve.bikefitapp.calibration.CalibrationActivity
@@ -363,14 +364,18 @@ class CameraPreviewActivity : AppCompatActivity() {
                     cycleMetricsOverlay.updateCurrentKneeAngle(displayAngle.angle)
                 }
                 
-                // Update hip angle
-                val hipResult = HipAngleCalculator.calculateHipAngle(poseResult, BodySide.RIGHT)
+                // Update hip angle (try RIGHT side first, then LEFT)
+                val hipResultRight = HipAngleCalculator.calculateHipAngle(poseResult, BodySide.RIGHT)
+                val hipResultLeft = HipAngleCalculator.calculateHipAngle(poseResult, BodySide.LEFT)
+                val hipResult = if (hipResultRight.isValid) hipResultRight else hipResultLeft
                 if (hipResult.isValid) {
                     cycleMetricsOverlay.updateCurrentHipAngle(hipResult.angle)
                 }
                 
-                // Update torso angle
-                val torsoResult = TorsoAngleCalculator.calculateTorsoAngle(poseResult, BodySide.RIGHT)
+                // Update torso angle (try RIGHT side first, then LEFT)
+                val torsoResultRight = TorsoAngleCalculator.calculateTorsoAngle(poseResult, BodySide.RIGHT)
+                val torsoResultLeft = TorsoAngleCalculator.calculateTorsoAngle(poseResult, BodySide.LEFT)
+                val torsoResult = if (torsoResultRight.isValid) torsoResultRight else torsoResultLeft
                 if (torsoResult.isValid) {
                     cycleMetricsOverlay.updateCurrentTorsoAngle(torsoResult.angle)
                 }
@@ -466,6 +471,10 @@ class CameraPreviewActivity : AppCompatActivity() {
         val torsoResult = TorsoAngleCalculator.calculateTorsoAngle(poseResult, side)
         val torsoAngle = if (torsoResult.isValid) torsoResult.angle else null
         
+        // Calculate ankle angle
+        val ankleResult = AnkleAngleCalculator.calculateAnkleAngle(poseResult, side)
+        val ankleAngle = if (ankleResult.isValid) ankleResult.angle else null
+        
         // Compute KOPS (Knee Over Pedal Spindle) normalized value
         val poseFrame = PoseFrame(
             frameNumber = frameNumber,
@@ -484,6 +493,7 @@ class CameraPreviewActivity : AppCompatActivity() {
             kneeAngle = kneeAngle,
             hipAngle = hipAngle,
             torsoAngle = torsoAngle,
+            ankleAngle = ankleAngle,
             kopsNormalized = kopsNormalized
         )
 
@@ -508,7 +518,8 @@ class CameraPreviewActivity : AppCompatActivity() {
                 val cycleMetrics = aggregator.endCycleAtBdc(
                     frameNumber = event.frameNumber,
                     timestampMs = event.timestampMs,
-                    kneeAngle = angleAtBdc
+                    kneeAngle = angleAtBdc,
+                    ankleAngle = ankleAngle
                 )
                 
                 if (cycleMetrics != null) {
@@ -547,8 +558,8 @@ class CameraPreviewActivity : AppCompatActivity() {
                     }
                 }
             } else if (event.type == PedalExtremum.TDC) {
-                // Record TDC for the aggregator
-                aggregator.recordTdc(kneeAngle)
+                // Record TDC for the aggregator (including hip angle at TDC)
+                aggregator.recordTdc(kneeAngle, hipAngle)
             }
         }
     }

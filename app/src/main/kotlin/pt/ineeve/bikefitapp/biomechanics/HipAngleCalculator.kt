@@ -8,12 +8,16 @@ import pt.ineeve.bikefitapp.pose.PoseResult
 /**
  * Result of a hip angle calculation.
  * 
- * The hip angle is measured at the hip joint, formed by:
+ * The hip flexion angle is measured at the hip joint, representing
+ * the internal (acute) angle between the torso and thigh.
+ * 
+ * Landmarks used:
  * - The shoulder (torso reference)
  * - The hip (vertex of the angle)
  * - The knee (leg reference)
  * 
- * @param angle The hip angle in degrees (0-180). A more upright position has a larger angle.
+ * @param angle The hip flexion angle in degrees. Smaller = more aero/closed hip.
+ *              Typical values: Road 45-55°, TT/Triathlon 40-45° at TDC.
  * @param side Which leg was analyzed
  * @param isValid Whether all required landmarks were visible
  * @param confidence Average visibility of the landmarks used
@@ -40,19 +44,24 @@ data class HipAngleResult(
 }
 
 /**
- * Calculates hip angles from pose landmarks.
+ * Calculates hip flexion angles from pose landmarks.
  * 
- * The hip angle is measured as the angle at the hip joint formed by:
+ * The hip flexion angle is the internal (acute) angle at the hip joint,
+ * measured at the front of the body between the torso and thigh.
+ * This is the standard measurement used in bike fitting literature.
+ * 
+ * Landmarks used:
  * - The shoulder landmark (torso reference)
  * - The hip landmark (vertex of the angle)
  * - The knee landmark (leg reference)
  * 
- * This angle represents how open or closed the hip is relative to the torso.
+ * For cycling at TDC (top dead center):
+ * - Road cycling: 45-55° (typical)
+ * - TT/Triathlon: 40-45° (more aggressive)
+ * - Recreational: 55-65° (more upright)
  * 
- * For cycling:
- * - A more aero position has a smaller hip angle (torso bent forward)
- * - A more upright position has a larger hip angle
- * - Typical road cycling hip angles range from 40-60 degrees at the top of the pedal stroke
+ * A smaller hip angle indicates a more aerodynamic (closed) position.
+ * A larger hip angle indicates a more upright (open) position.
  * 
  * All functions are pure - they take input and return output without
  * modifying any state.
@@ -205,15 +214,23 @@ object HipAngleCalculator {
     }
 
     /**
-     * Internal function to calculate the angle at the hip joint.
+     * Internal function to calculate the hip flexion angle.
      * 
-     * Uses the Vector2D.angleAtVertex function to calculate the angle
-     * formed at the hip between the shoulder and knee.
+     * The hip flexion angle is the internal (acute) angle at the hip joint,
+     * measured at the front of the body between the torso and thigh.
+     * 
+     * This is calculated as 180° minus the angle at the hip vertex, because:
+     * - The vertex angle measures the posterior (back) angle
+     * - Bike fitting uses the anterior (front) hip flexion angle
+     * 
+     * Typical values for cycling:
+     * - Road: 45-55° at TDC
+     * - TT/Triathlon: 40-45° at TDC
      * 
      * @param shoulder The shoulder landmark
      * @param hip The hip landmark (vertex of the angle)
      * @param knee The knee landmark
-     * @return The angle in degrees (0-180)
+     * @return The hip flexion angle in degrees (typically 40-90 for cycling)
      */
     internal fun calculateAngleAtHip(
         shoulder: Landmark,
@@ -224,18 +241,24 @@ object HipAngleCalculator {
         val hipPoint = Vector2D(hip.x, hip.y)
         val kneePoint = Vector2D(knee.x, knee.y)
 
-        return Vector2D.angleAtVertex(
+        // Calculate the angle at the hip vertex (posterior angle)
+        val vertexAngle = Vector2D.angleAtVertex(
             a = shoulderPoint,
             b = hipPoint,
             c = kneePoint
         )
+        
+        // Return the hip flexion angle (anterior/internal angle)
+        // This is the supplementary angle to the vertex angle
+        return 180f - vertexAngle
     }
 
     /**
-     * Calculates the hip angle from raw coordinate values.
+     * Calculates the hip flexion angle from raw coordinate values.
      * 
      * This is a convenience function for direct calculation without
-     * creating Landmark objects.
+     * creating Landmark objects. Returns the internal (acute) hip angle
+     * as used in bike fitting.
      * 
      * @param shoulderX Shoulder x coordinate
      * @param shoulderY Shoulder y coordinate
@@ -243,18 +266,19 @@ object HipAngleCalculator {
      * @param hipY Hip y coordinate
      * @param kneeX Knee x coordinate
      * @param kneeY Knee y coordinate
-     * @return The hip angle in degrees (0-180)
+     * @return The hip flexion angle in degrees (typically 40-90 for cycling)
      */
     fun calculateHipAngleFromCoordinates(
         shoulderX: Float, shoulderY: Float,
         hipX: Float, hipY: Float,
         kneeX: Float, kneeY: Float
     ): Float {
-        return Vector2D.angleAtVertex(
+        val vertexAngle = Vector2D.angleAtVertex(
             a = Vector2D(shoulderX, shoulderY),
             b = Vector2D(hipX, hipY),
             c = Vector2D(kneeX, kneeY)
         )
+        return 180f - vertexAngle
     }
 
     /**
@@ -313,12 +337,15 @@ object HipAngleCalculator {
             (leftKnee.y + rightKnee.y) / 2f
         )
 
-        // Calculate angle at hip midpoint
-        val angle = Vector2D.angleAtVertex(
+        // Calculate vertex angle at hip midpoint
+        val vertexAngle = Vector2D.angleAtVertex(
             a = shoulderMidpoint,
             b = hipMidpoint,
             c = kneeMidpoint
         )
+        
+        // Convert to hip flexion angle (internal/acute angle)
+        val hipFlexionAngle = 180f - vertexAngle
 
         // Calculate average confidence
         val confidence = (leftShoulder.visibility + rightShoulder.visibility +
@@ -326,7 +353,7 @@ object HipAngleCalculator {
                          leftKnee.visibility + rightKnee.visibility) / 6f
 
         return HipAngleResult(
-            angle = angle,
+            angle = hipFlexionAngle,
             side = BodySide.LEFT, // Using LEFT as convention for midpoint calculations
             isValid = true,
             confidence = confidence
