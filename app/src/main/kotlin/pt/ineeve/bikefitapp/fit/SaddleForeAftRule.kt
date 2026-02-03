@@ -240,6 +240,17 @@ class SaddleForeAftRule(
                     Severity.LOW
                 }
 
+                // Calculate adjustment: roughly 10mm saddle movement per 1% normalized offset
+                val offsetPercent = (absOffset * 100).toInt()
+                val adjustmentMm = (offsetPercent * 10).coerceIn(5, 30)
+
+                val recommendation = buildString {
+                    append("Move saddle forward by $adjustmentMm-${adjustmentMm + 5}mm on the rails. ")
+                    append("Your knee is too far forward of the pedal spindle at 3 o'clock. ")
+                    append("This can increase quad strain and reduce power transfer. ")
+                    append("After adjusting, verify knee is directly over or slightly behind the pedal spindle.")
+                }
+
                 issues.add(
                     FitIssue(
                         type = FitIssueType.SADDLE_FORE_AFT,
@@ -247,7 +258,7 @@ class SaddleForeAftRule(
                         description = "Knee is forward of pedal spindle at 3 o'clock (${formatOffset(kopsResult.offset)} offset)",
                         measuredValue = kopsResult.offset,
                         optimalRange = -config.maxBackwardOffset..config.maxForwardOffset,
-                        recommendation = "Move saddle forward. The knee should be directly over or slightly behind the pedal spindle."
+                        recommendation = recommendation
                     )
                 )
             }
@@ -262,6 +273,17 @@ class SaddleForeAftRule(
                     Severity.LOW
                 }
 
+                // Calculate adjustment: roughly 10mm saddle movement per 1% normalized offset
+                val offsetPercent = (absOffset * 100).toInt()
+                val adjustmentMm = (offsetPercent * 10).coerceIn(5, 30)
+
+                val recommendation = buildString {
+                    append("Move saddle back by $adjustmentMm-${adjustmentMm + 5}mm on the rails. ")
+                    append("Your knee is behind the pedal spindle at 3 o'clock. ")
+                    append("This can cause excessive hand pressure and hamstring strain. ")
+                    append("After adjusting, verify knee is directly over or slightly behind the pedal spindle.")
+                }
+
                 issues.add(
                     FitIssue(
                         type = FitIssueType.SADDLE_FORE_AFT,
@@ -269,7 +291,7 @@ class SaddleForeAftRule(
                         description = "Knee is behind pedal spindle at 3 o'clock (${formatOffset(kopsResult.offset)} offset)",
                         measuredValue = kopsResult.offset,
                         optimalRange = -config.maxBackwardOffset..config.maxForwardOffset,
-                        recommendation = "Move saddle back. The knee should be directly over or slightly behind the pedal spindle."
+                        recommendation = recommendation
                     )
                 )
             }

@@ -243,6 +243,23 @@ class ReachRule(
     }
 
     private fun createReachTooLongIssue(torsoAngle: Float, severity: Severity): FitIssue {
+        // Calculate adjustment based on how aggressive the position is
+        val angleError = config.minOptimalTorsoAngle - torsoAngle
+        val stemAdjustment = when {
+            angleError > 10 -> "20-30mm"
+            angleError > 5 -> "10-20mm"
+            else -> "5-10mm"
+        }
+
+        val recommendation = buildString {
+            append("Reduce reach with a shorter stem (-$stemAdjustment length). ")
+            append("Alternatively: raise handlebars 10-20mm, or move saddle forward 5-10mm. ")
+            if (severity == Severity.HIGH) {
+                append("Your position is very aggressive, which can strain the neck, back, and shoulders. ")
+            }
+            append("Target torso angle: ${formatAngle(config.minOptimalTorsoAngle)}-${formatAngle(config.maxOptimalTorsoAngle)}.")
+        }
+
         return FitIssue(
             type = FitIssueType.REACH,
             severity = severity,
@@ -250,13 +267,28 @@ class ReachRule(
                     "Rider is overstretched.",
             measuredValue = torsoAngle,
             optimalRange = config.minOptimalTorsoAngle..config.maxOptimalTorsoAngle,
-            recommendation = "Reduce reach by using a shorter stem, raising handlebars, " +
-                    "or moving saddle forward. Target torso angle: " +
-                    "${formatAngle(config.minOptimalTorsoAngle)}-${formatAngle(config.maxOptimalTorsoAngle)}"
+            recommendation = recommendation
         )
     }
 
     private fun createReachTooShortIssue(torsoAngle: Float, severity: Severity): FitIssue {
+        // Calculate adjustment based on how upright the position is
+        val angleError = torsoAngle - config.maxOptimalTorsoAngle
+        val stemAdjustment = when {
+            angleError > 15 -> "20-30mm"
+            angleError > 8 -> "10-20mm"
+            else -> "5-10mm"
+        }
+
+        val recommendation = buildString {
+            append("Increase reach with a longer stem (+$stemAdjustment length). ")
+            append("Alternatively: lower handlebars 10-20mm, or move saddle back 5-10mm. ")
+            if (severity == Severity.HIGH) {
+                append("An overly upright position reduces aerodynamic efficiency and may indicate the frame is too small. ")
+            }
+            append("Target torso angle: ${formatAngle(config.minOptimalTorsoAngle)}-${formatAngle(config.maxOptimalTorsoAngle)}.")
+        }
+
         return FitIssue(
             type = FitIssueType.REACH,
             severity = severity,
@@ -264,9 +296,7 @@ class ReachRule(
                     "Handlebars may be too close or too high.",
             measuredValue = torsoAngle,
             optimalRange = config.minOptimalTorsoAngle..config.maxOptimalTorsoAngle,
-            recommendation = "Increase reach by using a longer stem, lowering handlebars, " +
-                    "or moving saddle back. Target torso angle: " +
-                    "${formatAngle(config.minOptimalTorsoAngle)}-${formatAngle(config.maxOptimalTorsoAngle)}"
+            recommendation = recommendation
         )
     }
 

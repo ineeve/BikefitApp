@@ -15,20 +15,24 @@ import pt.ineeve.bikefitapp.pose.PoseFrame
  * @param saddleHeightConfig Configuration for saddle height rule
  * @param saddleForeAftConfig Configuration for saddle fore/aft rule
  * @param reachConfig Configuration for reach rule
+ * @param ankleAngleConfig Configuration for ankle angle rule
  * @param enableSaddleHeight Whether to check saddle height
  * @param enableSaddleForeAft Whether to check saddle fore/aft position
  * @param enableReach Whether to check reach
  * @param enableHipRocking Whether to check hip rocking
+ * @param enableAnkleAngle Whether to check ankle angle (plantarflexion)
  * @param minCyclesForAnalysis Minimum pedal cycles required for valid analysis
  */
 data class FitEngineConfig(
     val saddleHeightConfig: SaddleHeightConfig = SaddleHeightConfig(),
     val saddleForeAftConfig: SaddleForeAftConfig = SaddleForeAftConfig(),
     val reachConfig: ReachConfig = ReachConfig(),
+    val ankleAngleConfig: AnkleAngleConfig = AnkleAngleConfig(),
     val enableSaddleHeight: Boolean = true,
     val enableSaddleForeAft: Boolean = true,
     val enableReach: Boolean = true,
     val enableHipRocking: Boolean = true,
+    val enableAnkleAngle: Boolean = true,
     val minCyclesForAnalysis: Int = MIN_CYCLES_FOR_ANALYSIS
 ) {
     companion object {
@@ -105,6 +109,7 @@ class FitEngine(
     private val saddleHeightRule = SaddleHeightRule(config.saddleHeightConfig)
     private val saddleForeAftRule = SaddleForeAftRule(config.saddleForeAftConfig)
     private val reachRule = ReachRule(config.reachConfig)
+    private val ankleAngleRule = AnkleAngleRule(config.ankleAngleConfig)
 
     /**
      * Performs a complete bike fit analysis.
@@ -144,6 +149,11 @@ class FitEngine(
         // Run hip rocking analysis
         if (config.enableHipRocking) {
             allIssues.addAll(analyzeHipRocking(input))
+        }
+
+        // Run ankle angle analysis
+        if (config.enableAnkleAngle) {
+            allIssues.addAll(analyzeAnkleAngle(input))
         }
 
         // Sort issues by severity (highest first)
@@ -265,6 +275,14 @@ class FitEngine(
                 recommendation = "Check saddle height (may be too high) or work on core stability"
             )
         )
+    }
+
+    /**
+     * Analyzes ankle angle (plantarflexion) at BDC.
+     */
+    private fun analyzeAnkleAngle(input: FitAnalysisInput): List<FitIssue> {
+        // Analyze using cycle summary
+        return ankleAngleRule.analyze(input.cycleSummary)
     }
 
     /**

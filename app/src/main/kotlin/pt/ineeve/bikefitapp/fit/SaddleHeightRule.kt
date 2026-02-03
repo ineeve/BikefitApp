@@ -256,8 +256,9 @@ class SaddleHeightRule(
             description = "Excessive hip movement during pedaling (${formatPercent(rocking.amplitude)} of frame height)",
             measuredValue = rocking.amplitude,
             optimalRange = 0f..config.hipRockingThreshold,
-            recommendation = "This often indicates the saddle is too high. " +
-                    "Lower the saddle and/or work on core stability."
+            recommendation = "Lower the saddle by 5-10mm. Hip rocking typically means " +
+                    "you're reaching too far at the bottom of the pedal stroke. " +
+                    "Core stability exercises can also help reduce rocking."
         )
     }
 
@@ -274,14 +275,27 @@ class SaddleHeightRule(
             }
         }
 
+        // Calculate recommended adjustment: ~2-3mm saddle height per 1° knee angle
+        val angleError = kneeAngle - config.maxOptimalKneeAngle
+        val minAdjustment = (angleError * 2).toInt().coerceAtLeast(3)
+        val maxAdjustment = (angleError * 3).toInt().coerceAtLeast(5)
+
+        val recommendation = buildString {
+            append("Lower the saddle by $minAdjustment-${maxAdjustment}mm. ")
+            if (hasHipRocking) {
+                append("Hip rocking confirms this adjustment is needed. ")
+            }
+            append("Each 1° knee angle change ≈ 2-3mm saddle height. ")
+            append("Target: ${formatAngle(config.minOptimalKneeAngle)}-${formatAngle(config.maxOptimalKneeAngle)} at BDC.")
+        }
+
         return FitIssue(
             type = FitIssueType.SADDLE_HEIGHT,
             severity = severity,
             description = description,
             measuredValue = kneeAngle,
             optimalRange = config.minOptimalKneeAngle..config.maxOptimalKneeAngle,
-            recommendation = "Lower the saddle. Target knee angle at BDC: " +
-                    "${formatAngle(config.minOptimalKneeAngle)}-${formatAngle(config.maxOptimalKneeAngle)}"
+            recommendation = recommendation
         )
     }
 
@@ -289,14 +303,25 @@ class SaddleHeightRule(
         kneeAngle: Float,
         severity: Severity
     ): FitIssue {
+        // Calculate recommended adjustment: ~2-3mm saddle height per 1° knee angle
+        val angleError = config.minOptimalKneeAngle - kneeAngle
+        val minAdjustment = (angleError * 2).toInt().coerceAtLeast(3)
+        val maxAdjustment = (angleError * 3).toInt().coerceAtLeast(5)
+
+        val recommendation = buildString {
+            append("Raise the saddle by $minAdjustment-${maxAdjustment}mm. ")
+            append("Each 1° knee angle change ≈ 2-3mm saddle height. ")
+            append("A low saddle reduces power and stresses the knee joint. ")
+            append("Target: ${formatAngle(config.minOptimalKneeAngle)}-${formatAngle(config.maxOptimalKneeAngle)} at BDC.")
+        }
+
         return FitIssue(
             type = FitIssueType.SADDLE_HEIGHT,
             severity = severity,
             description = "Knee too flexed at bottom of pedal stroke (${formatAngle(kneeAngle)})",
             measuredValue = kneeAngle,
             optimalRange = config.minOptimalKneeAngle..config.maxOptimalKneeAngle,
-            recommendation = "Raise the saddle. Target knee angle at BDC: " +
-                    "${formatAngle(config.minOptimalKneeAngle)}-${formatAngle(config.maxOptimalKneeAngle)}"
+            recommendation = recommendation
         )
     }
 

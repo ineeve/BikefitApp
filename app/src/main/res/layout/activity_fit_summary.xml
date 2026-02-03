@@ -116,9 +116,10 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Biomechanical Analysis"
-                        android:textSize="18sp"
+                        android:textSize="20sp"
                         android:textStyle="bold"
-                        android:textColor="@color/black" />
+                        android:textColor="@color/recommendation_text_primary"
+                        android:letterSpacing="0.02" />
                     
                     <!-- Session Summary -->
                     <LinearLayout

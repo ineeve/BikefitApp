@@ -258,8 +258,13 @@ class FitSummaryActivity : AppCompatActivity() {
             cadenceValue.text = "--"
         }
         
-        // Cycle Count
-        cycleCountValue.text = "%d cycles".format(metrics.cycleCount)
+        // Cycle Count - show filtered/total if outliers were removed
+        if (metrics.outlierCount > 0) {
+            val totalCycles = metrics.cycleCount + metrics.outlierCount
+            cycleCountValue.text = "%d of %d".format(metrics.cycleCount, totalCycles)
+        } else {
+            cycleCountValue.text = "%d".format(metrics.cycleCount)
+        }
         
         // Data Quality
         val quality = metrics.dataQuality

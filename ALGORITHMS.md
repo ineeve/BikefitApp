@@ -13,6 +13,11 @@ This document describes the key algorithms implemented in BikefitApp for pose pr
   - [Torso Angle](#torso-angle)
 - [KOPS Calculation](#kops-calculation)
 - [Hip Rocking Detection](#hip-rocking-detection)
+- [Fit Rules & Recommendations](#fit-rules--recommendations)
+  - [Saddle Height Rule](#saddle-height-rule)
+  - [Saddle Fore/Aft Rule](#saddle-foreaft-rule)
+  - [Reach Rule](#reach-rule)
+  - [Ankle Angle Rule](#ankle-angle-rule)
 - [Angle Arc Visualization](#angle-arc-visualization)
 
 ---
@@ -680,6 +685,255 @@ Hip rocking typically indicates saddle is too high, causing rider to reach for p
 
 ---
 
+## Fit Rules & Recommendations
+
+**Files:**
+- [FitEngine.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/fit/FitEngine.kt)
+- [SaddleHeightRule.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/fit/SaddleHeightRule.kt)
+- [SaddleForeAftRule.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/fit/SaddleForeAftRule.kt)
+- [ReachRule.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/fit/ReachRule.kt)
+- [AnkleAngleRule.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/fit/AnkleAngleRule.kt)
+
+### Purpose
+
+Generate actionable bike fit recommendations based on the 5 key metrics measured during cycling analysis. Each rule produces specific adjustment recommendations in millimeters.
+
+### FitEngine Overview
+
+The `FitEngine` orchestrates all fit rules and produces a consolidated `FitAnalysisResult`:
+
+```kotlin
+data class FitEngineConfig(
+    val saddleHeightConfig: SaddleHeightConfig,
+    val saddleForeAftConfig: SaddleForeAftConfig,
+    val reachConfig: ReachConfig,
+    val ankleAngleConfig: AnkleAngleConfig,
+    val enableSaddleHeight: Boolean = true,
+    val enableSaddleForeAft: Boolean = true,
+    val enableReach: Boolean = true,
+    val enableHipRocking: Boolean = true,
+    val enableAnkleAngle: Boolean = true,
+    val minCyclesForAnalysis: Int = 3
+)
+```
+
+### Saddle Height Rule
+
+**Primary Metric:** Knee angle at Bottom Dead Center (BDC)
+
+**Thresholds:**
+```kotlin
+const val MIN_OPTIMAL_KNEE_ANGLE = 145f  // degrees
+const val MAX_OPTIMAL_KNEE_ANGLE = 155f  // degrees
+const val TOO_HIGH_KNEE_ANGLE = 160f     // HIGH severity
+const val TOO_LOW_KNEE_ANGLE = 140f      // HIGH severity
+```
+
+**Adjustment Formula:**
+Each 1° of knee angle change ≈ 2-3mm of saddle height adjustment.
+
+```kotlin
+// Saddle too high (knee over-extended)
+val angleError = kneeAngle - MAX_OPTIMAL_KNEE_ANGLE
+val minAdjustment = (angleError * 2).toInt().coerceAtLeast(3)
+val maxAdjustment = (angleError * 3).toInt().coerceAtLeast(5)
+// Recommendation: "Lower the saddle by X-Ymm"
+
+// Saddle too low (knee too flexed)
+val angleError = MIN_OPTIMAL_KNEE_ANGLE - kneeAngle
+// Recommendation: "Raise the saddle by X-Ymm"
+```
+
+**Severity Levels:**
+| Knee Angle | Severity | Adjustment |
+|------------|----------|------------|
+| < 140° | HIGH | Raise 10-15mm |
+| 140-145° | MEDIUM | Raise 5-10mm |
+| 145-155° | OPTIMAL | No change |
+| 155-160° | LOW-MEDIUM | Lower 5-10mm |
+| > 160° | HIGH | Lower 10-15mm |
+
+**Hip Rocking Escalation:**
+If hip rocking is detected alongside saddle height issues, severity is escalated and recommendation includes: "Hip rocking confirms this adjustment is needed."
+
+### Saddle Fore/Aft Rule
+
+**Primary Metric:** KOPS (Knee Over Pedal Spindle) at 3 o'clock
+
+**Thresholds:**
+```kotlin
+const val MAX_FORWARD_OFFSET = 0.03f   // 3% normalized
+const val MAX_BACKWARD_OFFSET = 0.03f  // 3% normalized
+const val HIGH_SEVERITY_MULTIPLIER = 2.0f
+```
+
+**Adjustment Formula:**
+Approximately 10mm of saddle rail movement per 1% of normalized KOPS offset.
+
+```kotlin
+val offsetPercent = (absOffset * 100).toInt()
+val adjustmentMm = (offsetPercent * 10).coerceIn(5, 30)
+```
+
+**Interpretation:**
+| KOPS Offset | Saddle Position | Recommendation |
+|-------------|-----------------|----------------|
+| > +3% | Too far back | Move forward 10-15mm |
+| -3% to +3% | OPTIMAL | No change |
+| < -3% | Too far forward | Move back 10-15mm |
+
+**Consequences:**
+- **Knee forward of pedal:** Increased quad strain, reduced power transfer
+- **Knee behind pedal:** Excessive hand pressure, hamstring strain
+
+### Reach Rule
+
+**Primary Metric:** Torso angle from horizontal
+
+**Thresholds:**
+```kotlin
+const val MIN_OPTIMAL_TORSO_ANGLE = 30f  // degrees from horizontal
+const val MAX_OPTIMAL_TORSO_ANGLE = 60f  // degrees from horizontal
+const val TOO_AGGRESSIVE_ANGLE = 25f     // HIGH severity
+const val TOO_UPRIGHT_ANGLE = 70f        // HIGH severity
+```
+
+**Adjustment Formula:**
+Stem length adjustment based on torso angle deviation:
+
+```kotlin
+// Reach too long (position too aggressive)
+val angleError = MIN_OPTIMAL_TORSO_ANGLE - torsoAngle
+val stemAdjustment = when {
+    angleError > 10 -> "20-30mm"
+    angleError > 5 -> "10-20mm"
+    else -> "5-10mm"
+}
+// Recommendation: "Reduce reach with a shorter stem (-Xmm)"
+
+// Reach too short (position too upright)
+val angleError = torsoAngle - MAX_OPTIMAL_TORSO_ANGLE
+// Recommendation: "Increase reach with a longer stem (+Xmm)"
+```
+
+**Severity Levels:**
+| Torso Angle | Position | Severity | Adjustment |
+|-------------|----------|----------|------------|
+| < 25° | Very aggressive | HIGH | Shorter stem 20-30mm |
+| 25-30° | Aggressive | MEDIUM | Shorter stem 5-10mm |
+| 30-60° | OPTIMAL | - | No change |
+| 60-70° | Upright | MEDIUM | Longer stem 5-10mm |
+| > 70° | Very upright | HIGH | Longer stem 20-30mm |
+
+**Alternative Adjustments:**
+- Raise/lower handlebars (10-20mm)
+- Move saddle forward/back (5-10mm)
+
+### Ankle Angle Rule
+
+**Primary Metric:** Ankle plantarflexion at BDC
+
+**Thresholds:**
+```kotlin
+const val MIN_OPTIMAL_ANGLE = 15f    // degrees plantarflexion
+const val MAX_OPTIMAL_ANGLE = 25f    // degrees plantarflexion
+const val EXCESSIVE_ANGLE = 30f      // HIGH severity (Achilles risk)
+const val HEEL_DROP_THRESHOLD = -5f  // Dorsiflexion (heels dropping)
+```
+
+**Physical Interpretation:**
+- **0°** = Neutral (foot perpendicular to shin)
+- **Positive** = Plantarflexion (toes pointing down)
+- **Negative** = Dorsiflexion (toes pointing up, heels dropping)
+
+**Recommendations:**
+
+| Ankle Angle | Issue | Severity | Recommendation |
+|-------------|-------|----------|----------------|
+| > 30° | Excessive plantarflexion | HIGH | Move cleats 5-8mm forward |
+| 25-30° | Mild excessive | MEDIUM | Move cleats 3-5mm forward |
+| 15-25° | OPTIMAL | - | No change |
+| 0-15° | Limited ankling | LOW | May be natural style |
+| < -5° | Heel dropping | LOW-MEDIUM | Move cleats 3-5mm back |
+
+**Cleat Position Effects:**
+- **Cleats too far back:** Excessive toe-down, Achilles strain
+- **Cleats too far forward:** Heel dropping, less power through ball of foot
+
+**Additional Considerations:**
+- Excessive plantarflexion (>30°) risks Achilles tendinitis
+- May also indicate saddle is too high (reaching for pedals)
+- Technique cue: "Visualize scraping mud off your shoe at bottom of stroke"
+
+### Severity Classification
+
+All rules use a common severity enum:
+
+```kotlin
+enum class Severity {
+    LOW,     // Minor issue, optional adjustment
+    MEDIUM,  // Noticeable issue, recommended adjustment
+    HIGH     // Significant issue, adjustment strongly recommended
+}
+```
+
+**Grade Calculation:**
+```kotlin
+enum class FitGrade {
+    EXCELLENT,  // 0 issues
+    GOOD,       // 1-2 LOW issues
+    FAIR,       // 1 MEDIUM or 3+ LOW issues
+    POOR        // Any HIGH issue or 2+ MEDIUM issues
+}
+```
+
+### Cross-Metric Correlations
+
+The FitEngine considers correlations between metrics:
+
+1. **Saddle Height + Hip Rocking:**
+   - If knee > 155° AND hip rocking detected → escalate to HIGH severity
+   - Recommendation includes both saddle adjustment and core stability
+
+2. **Saddle Height + Hip Angle:**
+   - If hip angle at TDC < 55° AND knee angle at BDC > 155° → compound issue
+   - May indicate frame too large or saddle too high AND far back
+
+3. **Ankle + Saddle Height:**
+   - If excessive plantarflexion AND knee over-extended → saddle likely too high
+   - Recommendation addresses root cause (saddle) before cleats
+
+### Example Output
+
+```kotlin
+FitAnalysisResult(
+    issues = [
+        FitIssue(
+            type = SADDLE_HEIGHT,
+            severity = MEDIUM,
+            description = "Knee too extended at bottom of pedal stroke (158°)",
+            measuredValue = 158f,
+            optimalRange = 145f..155f,
+            recommendation = "Lower the saddle by 6-9mm. Each 1° knee angle 
+                              change ≈ 2-3mm saddle height. Target: 145-155° at BDC."
+        ),
+        FitIssue(
+            type = CLEAT_POSITION,
+            severity = MEDIUM,
+            description = "Excessive ankle plantarflexion at bottom of pedal stroke (28°)",
+            measuredValue = 28f,
+            optimalRange = 15f..25f,
+            recommendation = "Move cleats 3-5mm forward on your shoes. 
+                              Also check if saddle is too high (causing reaching for pedals)."
+        )
+    ],
+    cycleCount = 8,
+    grade = FitGrade.FAIR
+)
+```
+
+---
+
 ## Configuration Summary
 
 ### Global Parameters
@@ -771,6 +1025,11 @@ On mid-range Android device (Snapdragon 765G):
 - [CycleAggregator.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/biomechanics/CycleAggregator.kt)
 - [KneeOverPedalOffset.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/biomechanics/KneeOverPedalOffset.kt)
 - [HipRockingDetector.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/biomechanics/HipRockingDetector.kt)
+- [FitEngine.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/fit/FitEngine.kt)
+- [SaddleHeightRule.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/fit/SaddleHeightRule.kt)
+- [SaddleForeAftRule.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/fit/SaddleForeAftRule.kt)
+- [ReachRule.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/fit/ReachRule.kt)
+- [AnkleAngleRule.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/fit/AnkleAngleRule.kt)
 
 ### Testing
 
