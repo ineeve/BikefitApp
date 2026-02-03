@@ -118,7 +118,16 @@ enum class FitIssueType {
      * Detected by tracking hip vertical motion during pedaling.
      * Excessive rocking often indicates saddle too high.
      */
-    HIP_ROCKING;
+    HIP_ROCKING,
+
+    /**
+     * Hip angle issue.
+     * 
+     * Detected by analyzing minimum hip angle at top dead center (TDC).
+     * A closed hip angle restricts breathing and reduces power.
+     * A very open hip indicates an upright position.
+     */
+    HIP_ANGLE;
 
     /**
      * Returns a brief description of the issue type.
@@ -132,6 +141,7 @@ enum class FitIssueType {
             CLEAT_POSITION -> "Cleat position adjustment needed"
             CRANK_LENGTH -> "Crank length may not be optimal"
             HIP_ROCKING -> "Excessive hip movement detected"
+            HIP_ANGLE -> "Hip angle adjustment needed"
         }
     }
 }

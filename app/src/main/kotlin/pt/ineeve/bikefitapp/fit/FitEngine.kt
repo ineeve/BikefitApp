@@ -11,28 +11,37 @@ import pt.ineeve.bikefitapp.pose.PoseFrame
  * Configuration for the FitEngine.
  * 
  * Controls which rules are enabled and their individual configurations.
+ * Supports context-aware thresholds based on riding context and fit bias.
  * 
+ * @param ridingContext The riding context (Road, Endurance, Gravel, TT, Indoor)
+ * @param fitBias The fit priority bias (Comfort, Neutral, Performance)
  * @param saddleHeightConfig Configuration for saddle height rule
  * @param saddleForeAftConfig Configuration for saddle fore/aft rule
  * @param reachConfig Configuration for reach rule
  * @param ankleAngleConfig Configuration for ankle angle rule
+ * @param hipAngleConfig Configuration for hip angle rule
  * @param enableSaddleHeight Whether to check saddle height
  * @param enableSaddleForeAft Whether to check saddle fore/aft position
  * @param enableReach Whether to check reach
  * @param enableHipRocking Whether to check hip rocking
  * @param enableAnkleAngle Whether to check ankle angle (plantarflexion)
+ * @param enableHipAngle Whether to check hip angle at TDC
  * @param minCyclesForAnalysis Minimum pedal cycles required for valid analysis
  */
 data class FitEngineConfig(
+    val ridingContext: RidingContext = RidingContext.DEFAULT,
+    val fitBias: FitBias = FitBias.DEFAULT,
     val saddleHeightConfig: SaddleHeightConfig = SaddleHeightConfig(),
     val saddleForeAftConfig: SaddleForeAftConfig = SaddleForeAftConfig(),
     val reachConfig: ReachConfig = ReachConfig(),
     val ankleAngleConfig: AnkleAngleConfig = AnkleAngleConfig(),
+    val hipAngleConfig: HipAngleConfig = HipAngleConfig(),
     val enableSaddleHeight: Boolean = true,
     val enableSaddleForeAft: Boolean = true,
     val enableReach: Boolean = true,
     val enableHipRocking: Boolean = true,
     val enableAnkleAngle: Boolean = true,
+    val enableHipAngle: Boolean = true,
     val minCyclesForAnalysis: Int = MIN_CYCLES_FOR_ANALYSIS
 ) {
     companion object {
@@ -43,6 +52,56 @@ data class FitEngineConfig(
          * consistent patterns and filter out noise.
          */
         const val MIN_CYCLES_FOR_ANALYSIS = 3
+
+        /**
+         * Create a FitEngineConfig with context-aware thresholds.
+         * 
+         * This factory method computes appropriate thresholds based on:
+         * 1. The riding context (Road, Endurance, Gravel, TT, Indoor)
+         * 2. The fit bias (Comfort, Neutral, Performance)
+         * 3. Global safety floors (never crossed regardless of settings)
+         * 
+         * @param context The riding context
+         * @param bias The fit priority bias (defaults to NEUTRAL)
+         * @return A FitEngineConfig with context-appropriate thresholds
+         */
+        fun forContext(
+            context: RidingContext,
+            bias: FitBias = FitBias.NEUTRAL
+        ): FitEngineConfig {
+            val thresholds = FitThresholds.forContextAndBias(context, bias)
+            
+            return FitEngineConfig(
+                ridingContext = context,
+                fitBias = bias,
+                saddleHeightConfig = SaddleHeightConfig(
+                    minOptimalKneeAngle = thresholds.kneeAngleMin,
+                    maxOptimalKneeAngle = thresholds.kneeAngleMax,
+                    tooLowKneeAngle = thresholds.kneeAngleMin - 5f,
+                    tooHighKneeAngle = thresholds.kneeAngleMax + 5f
+                ),
+                reachConfig = ReachConfig(
+                    minOptimalTorsoAngle = thresholds.torsoAngleMin,
+                    maxOptimalTorsoAngle = thresholds.torsoAngleMax,
+                    tooAggressiveAngle = thresholds.torsoAngleMin - 5f,
+                    tooUprightAngle = thresholds.torsoAngleMax + 10f
+                ),
+                saddleForeAftConfig = SaddleForeAftConfig(
+                    maxForwardOffset = thresholds.kopsMax,
+                    maxBackwardOffset = -thresholds.kopsMin
+                ),
+                ankleAngleConfig = AnkleAngleConfig(
+                    minOptimalAngle = thresholds.ankleAngleMin,
+                    maxOptimalAngle = thresholds.ankleAngleMax
+                ),
+                hipAngleConfig = HipAngleConfig(
+                    minOptimalAngle = thresholds.hipAngleMin,
+                    maxOptimalAngle = thresholds.hipAngleMax,
+                    tooClosedAngle = FitThresholds.SAFETY_HIP_MIN,
+                    tooOpenAngle = thresholds.hipAngleMax + 10f
+                )
+            )
+        }
     }
 }
 
@@ -110,6 +169,7 @@ class FitEngine(
     private val saddleForeAftRule = SaddleForeAftRule(config.saddleForeAftConfig)
     private val reachRule = ReachRule(config.reachConfig)
     private val ankleAngleRule = AnkleAngleRule(config.ankleAngleConfig)
+    private val hipAngleRule = HipAngleRule(config.hipAngleConfig)
 
     /**
      * Performs a complete bike fit analysis.
@@ -154,6 +214,11 @@ class FitEngine(
         // Run ankle angle analysis
         if (config.enableAnkleAngle) {
             allIssues.addAll(analyzeAnkleAngle(input))
+        }
+
+        // Run hip angle analysis
+        if (config.enableHipAngle) {
+            allIssues.addAll(analyzeHipAngle(input))
         }
 
         // Sort issues by severity (highest first)
@@ -286,6 +351,14 @@ class FitEngine(
     }
 
     /**
+     * Analyzes hip angle at TDC.
+     */
+    private fun analyzeHipAngle(input: FitAnalysisInput): List<FitIssue> {
+        // Analyze using cycle summary
+        return hipAngleRule.analyze(input.cycleSummary)
+    }
+
+    /**
      * Analyzes a single pedal cycle.
      * 
      * Useful for real-time feedback during recording.
@@ -366,9 +439,10 @@ class FitEngine(
             FitIssueType.HIP_ROCKING -> 2    // Often related to saddle height
             FitIssueType.SADDLE_FORE_AFT -> 3
             FitIssueType.REACH -> 4
-            FitIssueType.HANDLEBAR_HEIGHT -> 5
-            FitIssueType.CLEAT_POSITION -> 6
-            FitIssueType.CRANK_LENGTH -> 7
+            FitIssueType.HIP_ANGLE -> 5      // Hip angle at TDC
+            FitIssueType.HANDLEBAR_HEIGHT -> 6
+            FitIssueType.CLEAT_POSITION -> 7
+            FitIssueType.CRANK_LENGTH -> 8
         }
     }
 

@@ -45,6 +45,7 @@ enum class FitCategory {
             FitIssueType.SADDLE_FORE_AFT -> SADDLE
             FitIssueType.REACH -> COCKPIT
             FitIssueType.HANDLEBAR_HEIGHT -> COCKPIT
+            FitIssueType.HIP_ANGLE -> COCKPIT
             FitIssueType.CLEAT_POSITION -> PEDALING
             FitIssueType.CRANK_LENGTH -> PEDALING
             FitIssueType.HIP_ROCKING -> STABILITY
@@ -151,7 +152,9 @@ data class FitSummary(
     val highSeverityCount: Int,
     val cycleCount: Int,
     val analysisTimestampMs: Long,
-    val cycleSummary: CycleSummary? = null
+    val cycleSummary: CycleSummary? = null,
+    val ridingContext: RidingContext = RidingContext.DEFAULT,
+    val fitBias: FitBias = FitBias.DEFAULT
 ) {
     /**
      * Returns true if no issues were found.
@@ -202,7 +205,11 @@ data class FitSummary(
          * This is the main factory method that transforms raw analysis
          * results into a user-friendly summary.
          */
-        fun fromAnalysisResult(result: FitAnalysisResult): FitSummary {
+        fun fromAnalysisResult(
+            result: FitAnalysisResult,
+            ridingContext: RidingContext = RidingContext.DEFAULT,
+            fitBias: FitBias = FitBias.DEFAULT
+        ): FitSummary {
             // Deduplicate and resolve conflicts
             val deduplicatedIssues = deduplicateIssues(result.issues)
             
@@ -229,7 +236,9 @@ data class FitSummary(
                 highSeverityCount = highSeverityCount,
                 cycleCount = result.cycleCount,
                 analysisTimestampMs = result.analysisTimestampMs,
-                cycleSummary = result.cycleSummary
+                cycleSummary = result.cycleSummary,
+                ridingContext = ridingContext,
+                fitBias = fitBias
             )
         }
 
@@ -346,9 +355,10 @@ data class FitSummary(
             FitIssueType.HIP_ROCKING -> 2
             FitIssueType.SADDLE_FORE_AFT -> 3
             FitIssueType.REACH -> 4
-            FitIssueType.HANDLEBAR_HEIGHT -> 5
-            FitIssueType.CLEAT_POSITION -> 6
-            FitIssueType.CRANK_LENGTH -> 7
+            FitIssueType.HIP_ANGLE -> 5
+            FitIssueType.HANDLEBAR_HEIGHT -> 6
+            FitIssueType.CLEAT_POSITION -> 7
+            FitIssueType.CRANK_LENGTH -> 8
         }
 
         /**

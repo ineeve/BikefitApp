@@ -13,14 +13,22 @@ This document describes the key algorithms implemented in BikefitApp for pose pr
   - [Torso Angle](#torso-angle)
 - [KOPS Calculation](#kops-calculation)
 - [Hip Rocking Detection](#hip-rocking-detection)
+- [Context-Based Configuration](#context-based-configuration)
+  - [Riding Contexts](#riding-contexts)
+  - [Fit Bias](#fit-bias)
+  - [Context Baselines](#context-baselines)
+  - [Bias Modifiers](#bias-modifiers)
+  - [Global Safety Floors](#global-safety-floors)
 - [Fit Rules & Recommendations](#fit-rules--recommendations)
   - [Saddle Height Rule](#saddle-height-rule)
   - [Saddle Fore/Aft Rule](#saddle-foreaft-rule)
   - [Reach Rule](#reach-rule)
   - [Ankle Angle Rule](#ankle-angle-rule)
+  - [Hip Angle Rule](#hip-angle-rule)
 - [Angle Arc Visualization](#angle-arc-visualization)
 
 ---
+
 
 ## Landmark Smoothing (EMA)
 
@@ -685,6 +693,142 @@ Hip rocking typically indicates saddle is too high, causing rider to reach for p
 
 ---
 
+## Context-Based Configuration
+
+**Files:**
+- [RidingContext.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/fit/RidingContext.kt)
+- [FitThresholds.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/fit/FitThresholds.kt)
+- [FitEngine.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/fit/FitEngine.kt)
+
+### Purpose
+
+Provide context-aware thresholds that adjust recommended fit ranges based on riding discipline and user preference for comfort vs. performance.
+
+### Riding Contexts
+
+The app supports 5 distinct riding contexts, each with different baseline ranges:
+
+| Context | Description | Primary Characteristics |
+|---------|-------------|------------------------|
+| **Road** | General road cycling | Balanced position, 35-45° torso |
+| **Endurance Road** | Long-distance riding | More upright, prioritizes comfort |
+| **Gravel** | Mixed terrain | Stable, slightly upright position |
+| **TT/Triathlon** | Time trial position | Aggressive aero position, 10-25° torso |
+| **Indoor** | Trainer/stationary | Most relaxed position |
+
+```kotlin
+enum class RidingContext(val displayName: String) {
+    ROAD("Road Cycling"),
+    ENDURANCE_ROAD("Endurance Road"),
+    GRAVEL("Gravel"),
+    TT_TRIATHLON("TT / Triathlon"),
+    INDOOR("Indoor")
+}
+```
+
+### Fit Bias
+
+Three bias settings "nudge" the thresholds:
+
+| Bias | Description | Effect |
+|------|-------------|--------|
+| **Comfort** | Prioritize comfort, reduce strain | Opens joints (+3-5° hip, +5° torso) |
+| **Neutral** | Balanced (baseline thresholds) | No modification |
+| **Performance** | Prioritize power, aero | Tightens position (-2-3° hip, -5° torso) |
+
+```kotlin
+enum class FitBias(val displayName: String) {
+    COMFORT("Comfort"),
+    NEUTRAL("Neutral"),
+    PERFORMANCE("Performance")
+}
+```
+
+### Context Baselines
+
+Each riding context has specific optimal ranges for the 5 key metrics:
+
+| Context | Hip @ TDC | Knee @ BDC | Torso | KOPS | Ankle |
+|---------|-----------|------------|-------|------|-------|
+| **Road** | 45-55° | 145-155° | 35-45° | ±3% | 15-25° |
+| **Endurance** | 50-60° | 140-150° | 45-55° | ±3% | 15-25° |
+| **Gravel** | 50-60° | 140-148° | 45-60° | ±3% | 15-25° |
+| **TT/Triathlon** | 38-48° | 142-150° | 10-25° | 0-5% forward | 15-25° |
+| **Indoor** | 55-65° | 145-155° | 50-60° | ±3% | 15-25° |
+
+**Note:** Knee angles are internal angles (180° - flexion). A 145° internal angle = 35° flexion.
+
+### Bias Modifiers
+
+Bias adjustments are applied to the baseline ranges:
+
+**Comfort Bias:**
+- Hip angle: +3° (opens hip, more upright)
+- Knee angle: -2° (slightly more flexed, lower saddle)
+- Torso angle: +5° (more upright)
+- KOPS: No change (movement strategy, not comfort)
+- Ankle: No change (interpretation only)
+
+**Performance Bias:**
+- Hip angle: -3° (tighter hip, more aero)
+- Knee angle: +2° (more extended, higher saddle)
+- Torso angle: -5° (more aggressive)
+- KOPS: No change
+- Ankle: No change
+
+```kotlin
+fun applyComfortBias(): FitThresholds = copy(
+    hipAngle = FloatRange(hipAngle.min + 3f, hipAngle.max + 3f),
+    kneeAngle = FloatRange(kneeAngle.min - 2f, kneeAngle.max - 2f),
+    torsoAngle = FloatRange(torsoAngle.min + 5f, torsoAngle.max + 5f)
+    // KOPS and Ankle unchanged
+).clampToSafetyFloors()
+```
+
+### Global Safety Floors
+
+Regardless of context or bias, certain physiological limits must never be exceeded:
+
+| Metric | Safety Floor | Reason |
+|--------|--------------|--------|
+| Hip angle | ≥ 40° | Prevent impingement |
+| Knee angle | ≥ 140° (internal) | Prevent over-flexion |
+| Ankle deviation | Flag > 35° | Potential injury risk |
+
+```kotlin
+companion object {
+    const val SAFETY_HIP_MIN = 40f
+    const val SAFETY_KNEE_MIN = 140f
+    const val SAFETY_ANKLE_MAX = 35f
+}
+
+fun clampToSafetyFloors(): FitThresholds = copy(
+    hipAngle = FloatRange(
+        hipAngle.min.coerceAtLeast(SAFETY_HIP_MIN),
+        hipAngle.max.coerceAtLeast(SAFETY_HIP_MIN)
+    ),
+    kneeAngle = FloatRange(
+        kneeAngle.min.coerceAtLeast(SAFETY_KNEE_MIN),
+        kneeAngle.max.coerceAtLeast(SAFETY_KNEE_MIN)
+    )
+)
+```
+
+### Usage
+
+```kotlin
+// Create context-aware configuration
+val config = FitEngineConfig.forContext(
+    context = RidingContext.ENDURANCE_ROAD,
+    bias = FitBias.COMFORT
+)
+
+// Thresholds are automatically adjusted
+// Endurance baseline + comfort modifiers + safety clamping
+```
+
+---
+
 ## Fit Rules & Recommendations
 
 **Files:**
@@ -693,6 +837,7 @@ Hip rocking typically indicates saddle is too high, causing rider to reach for p
 - [SaddleForeAftRule.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/fit/SaddleForeAftRule.kt)
 - [ReachRule.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/fit/ReachRule.kt)
 - [AnkleAngleRule.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/fit/AnkleAngleRule.kt)
+- [HipAngleRule.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/fit/HipAngleRule.kt)
 
 ### Purpose
 
@@ -864,6 +1009,63 @@ const val HEEL_DROP_THRESHOLD = -5f  // Dorsiflexion (heels dropping)
 - Excessive plantarflexion (>30°) risks Achilles tendinitis
 - May also indicate saddle is too high (reaching for pedals)
 - Technique cue: "Visualize scraping mud off your shoe at bottom of stroke"
+
+### Hip Angle Rule
+
+**File:** [HipAngleRule.kt](app/src/main/kotlin/pt/ineeve/bikefitapp/fit/HipAngleRule.kt)
+
+**Primary Metric:** Hip angle at Top Dead Center (TDC)
+
+**Default State:** Enabled by default
+
+**Thresholds:**
+```kotlin
+const val MIN_OPTIMAL_HIP_ANGLE = 45f  // degrees
+const val MAX_OPTIMAL_HIP_ANGLE = 55f  // degrees
+const val TOO_CLOSED_HIP_ANGLE = 40f   // HIGH severity (impingement risk)
+const val TOO_OPEN_HIP_ANGLE = 65f     // MEDIUM severity (poor position)
+```
+
+**Physical Interpretation:**
+Hip angle is measured at TDC (top of pedal stroke) where compression is maximum:
+- **< 40°** = Hip too closed, risk of FAI (femoroacetabular impingement)
+- **40-45°** = Tight but acceptable for TT/performance
+- **45-55°** = Optimal range for most riders
+- **55-65°** = More open, prioritizing comfort
+- **> 65°** = Excessively open, poor power transfer
+
+**Recommendations:**
+
+| Hip Angle | Issue | Severity | Recommendation |
+|-----------|-------|----------|----------------|
+| < 40° | Hip too closed | HIGH | Raise bars 15-20mm, consider shorter stem |
+| 40-45° | Moderately closed | MEDIUM | Raise bars 10-15mm |
+| 45-55° | OPTIMAL | - | No change |
+| 55-60° | Slightly open | LOW | May be intentional for comfort |
+| 60-65° | Moderately open | LOW | Consider lower bars 5-10mm for more power |
+| > 65° | Excessively open | MEDIUM | Lower bars 10-15mm, longer stem |
+
+**Adjustment Guidance:**
+```kotlin
+// Hip too closed (< MIN_OPTIMAL)
+val angleError = MIN_OPTIMAL_HIP_ANGLE - hipAngle
+val minAdjustment = (angleError * 3).toInt().coerceAtLeast(10)
+val maxAdjustment = (angleError * 4).toInt().coerceAtLeast(15)
+// Recommendation: "Raise handlebars by X-Ymm"
+
+// Hip too open (> MAX_OPTIMAL)
+// Recommendation: "Lower handlebars or use longer stem"
+```
+
+**Safety Floor:**
+Hip angle must never go below 40° regardless of bias or context setting. This protects against hip impingement.
+
+**Context Sensitivity:**
+Hip angle optimal range varies by riding context:
+- **TT/Triathlon:** 38-48° (more aggressive)
+- **Road:** 45-55° (balanced)
+- **Endurance/Gravel:** 50-60° (more comfort)
+- **Indoor:** 55-65° (most relaxed)
 
 ### Severity Classification
 

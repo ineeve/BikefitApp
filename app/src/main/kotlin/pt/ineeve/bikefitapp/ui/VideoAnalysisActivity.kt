@@ -7,6 +7,8 @@ import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.View
+import android.widget.ArrayAdapter
+import android.widget.AutoCompleteTextView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -23,10 +25,14 @@ import pt.ineeve.bikefitapp.R
 import pt.ineeve.bikefitapp.calibration.*
 import pt.ineeve.bikefitapp.biomechanics.*
 import pt.ineeve.bikefitapp.fit.FitAnalysisInput
+import pt.ineeve.bikefitapp.fit.FitBias
 import pt.ineeve.bikefitapp.fit.FitEngine
+import pt.ineeve.bikefitapp.fit.FitEngineConfig
 import pt.ineeve.bikefitapp.fit.FitSummary
+import pt.ineeve.bikefitapp.fit.RidingContext
 import pt.ineeve.bikefitapp.pose.*
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.card.MaterialCardView
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import pt.ineeve.bikefitapp.ui.AngleDisplay
 import pt.ineeve.bikefitapp.ui.AngleType
@@ -41,6 +47,13 @@ class VideoAnalysisActivity : AppCompatActivity() {
     private lateinit var progressContainer: LinearLayout
     private lateinit var progressBar: ProgressBar
     private lateinit var statusText: TextView
+    
+    // Context and Bias selection
+    private lateinit var contextBiasCard: MaterialCardView
+    private lateinit var contextDropdown: AutoCompleteTextView
+    private lateinit var biasDropdown: AutoCompleteTextView
+    private var selectedContext: RidingContext = RidingContext.DEFAULT
+    private var selectedBias: FitBias = FitBias.DEFAULT
 
     private var videoUri: Uri? = null
     private var poseLandmarkerWrapper: PoseLandmarkerWrapper? = null
@@ -78,6 +91,11 @@ class VideoAnalysisActivity : AppCompatActivity() {
         progressContainer = findViewById(R.id.progress_container)
         progressBar = findViewById(R.id.progress_bar)
         statusText = findViewById(R.id.status_text)
+        
+        // Context and Bias selection
+        contextBiasCard = findViewById(R.id.context_bias_card)
+        contextDropdown = findViewById(R.id.context_dropdown)
+        biasDropdown = findViewById(R.id.bias_dropdown)
 
         val uriString = intent.getStringExtra(EXTRA_VIDEO_URI)
         if (uriString == null) {
@@ -87,7 +105,30 @@ class VideoAnalysisActivity : AppCompatActivity() {
         videoUri = Uri.parse(uriString)
 
         setupCalibrationUI()
+        setupContextBiasUI()
         loadFirstFrame()
+    }
+
+    private fun setupContextBiasUI() {
+        // Setup riding context dropdown
+        val contexts = RidingContext.values().map { it.displayName }
+        val contextAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, contexts)
+        contextDropdown.setAdapter(contextAdapter)
+        contextDropdown.setText(RidingContext.DEFAULT.displayName, false)
+        
+        contextDropdown.setOnItemClickListener { _, _, position, _ ->
+            selectedContext = RidingContext.values()[position]
+        }
+
+        // Setup fit bias dropdown
+        val biases = FitBias.values().map { it.displayName }
+        val biasAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, biases)
+        biasDropdown.setAdapter(biasAdapter)
+        biasDropdown.setText(FitBias.DEFAULT.displayName, false)
+        
+        biasDropdown.setOnItemClickListener { _, _, position, _ ->
+            selectedBias = FitBias.values()[position]
+        }
     }
 
     private fun setupCalibrationUI() {
@@ -225,8 +266,9 @@ class VideoAnalysisActivity : AppCompatActivity() {
             is CalibrationState.WaitingForSaddle -> CalibrationState.WaitingForBottomBracket
             is CalibrationState.WaitingForBottomBracket -> CalibrationState.WaitingForHandlebar
             is CalibrationState.WaitingForHandlebar -> {
-                actionButton.text = "Start Analysis" // or "Confirm"
+                actionButton.text = "Start Analysis"
                 actionButton.visibility = View.VISIBLE
+                contextBiasCard.visibility = View.VISIBLE
                 CalibrationState.ReadyToConfirm
             }
             is CalibrationState.ReadyToConfirm -> CalibrationState.Confirmed(currentCalibration)
@@ -238,6 +280,7 @@ class VideoAnalysisActivity : AppCompatActivity() {
         poseOverlay.visibility = View.VISIBLE
         cycleMetricsOverlay.visibility = View.VISIBLE
         actionButton.visibility = View.GONE
+        contextBiasCard.visibility = View.GONE
         progressContainer.visibility = View.VISIBLE
         
         // Initialize Pose Detector
@@ -565,9 +608,11 @@ class VideoAnalysisActivity : AppCompatActivity() {
             bikeCalibration = calibration
         )
         
-        val engine = FitEngine()
+        // Create engine with context-aware thresholds
+        val config = FitEngineConfig.forContext(selectedContext, selectedBias)
+        val engine = FitEngine(config)
         val result = engine.analyze(input)
-        val summary = FitSummary.fromAnalysisResult(result)
+        val summary = FitSummary.fromAnalysisResult(result, selectedContext, selectedBias)
         
         FitSummaryActivity.start(this, summary)
         finish() 
