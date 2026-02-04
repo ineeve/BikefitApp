@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
+import android.widget.LinearLayout
+import android.widget.HorizontalScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -12,8 +14,10 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.card.MaterialCardView
 import pt.ineeve.bikefitapp.R
+import pt.ineeve.bikefitapp.fit.FitAnalysisResult
 import pt.ineeve.bikefitapp.fit.FitGrade
 import pt.ineeve.bikefitapp.fit.FitSummary
+import pt.ineeve.bikefitapp.biomechanics.CriticalPedalPosition
 
 /**
  * Activity that displays the bike fit analysis summary and recommendations.
@@ -71,6 +75,11 @@ class FitSummaryActivity : AppCompatActivity() {
     private lateinit var cadenceValue: TextView
     private lateinit var cycleCountValue: TextView
     private lateinit var dataQualityValue: TextView
+    
+    // Key frames views
+    private lateinit var keyFramesHeader: TextView
+    private lateinit var keyFramesScroll: HorizontalScrollView
+    private lateinit var keyFramesContainer: android.widget.LinearLayout
 
     private lateinit var adapter: FitRecommendationAdapter
 
@@ -126,6 +135,11 @@ class FitSummaryActivity : AppCompatActivity() {
         recommendationsHeader = findViewById(R.id.recommendations_header)
         recommendationsRecycler = findViewById(R.id.recommendations_recycler)
         emptyState = findViewById(R.id.empty_state)
+        
+        // Key frames views
+        keyFramesHeader = findViewById(R.id.key_frames_header)
+        keyFramesScroll = findViewById(R.id.key_frames_scroll)
+        keyFramesContainer = findViewById(R.id.key_frames_container)
     }
 
     private fun setupToolbar() {
@@ -159,6 +173,9 @@ class FitSummaryActivity : AppCompatActivity() {
         
         // Display metrics table
         displayMetrics(summary)
+        
+        // Display key frames if available
+        displayKeyFrames(summary)
         
         // Display recommendations
         if (summary.recommendations.isEmpty()) {
@@ -281,6 +298,113 @@ class FitSummaryActivity : AppCompatActivity() {
     }
 
     /**
+     * Displays the 3 key frames (TDC, BDC, 3 O'Clock) with angle overlays.
+     */
+    private fun displayKeyFrames(summary: FitSummary) {
+        // Get the analysis result with key frames
+        val analysisResult = currentAnalysisResult
+        
+        android.util.Log.d("FitSummaryActivity", "displayKeyFrames: currentAnalysisResult = $analysisResult")
+        if (analysisResult == null) {
+            android.util.Log.d("FitSummaryActivity", "displayKeyFrames: Analysis result is null, hiding key frames")
+            keyFramesHeader.visibility = View.GONE
+            keyFramesScroll.visibility = View.GONE
+            return
+        }
+        
+        val keyFrameSets = listOfNotNull(analysisResult.keyFrameSetLeft, analysisResult.keyFrameSetRight)
+        android.util.Log.d("FitSummaryActivity", "displayKeyFrames: Found ${keyFrameSets.size} key frame sets (left: ${analysisResult.keyFrameSetLeft}, right: ${analysisResult.keyFrameSetRight})")
+        if (keyFrameSets.isEmpty()) {
+            android.util.Log.d("FitSummaryActivity", "displayKeyFrames: No key frame sets found")
+            keyFramesHeader.visibility = View.GONE
+            keyFramesScroll.visibility = View.GONE
+            return
+        }
+
+        // Get all key frames from both sides
+        val allKeyFrames = mutableListOf<Pair<pt.ineeve.bikefitapp.biomechanics.KeyFrameDataPoint, Map<String, Float>>>()
+        
+        // Collect frames from all key frame sets
+        for ((setIndex, keyFrameSet) in keyFrameSets.withIndex()) {
+            android.util.Log.d("FitSummaryActivity", "displayKeyFrames: Processing set $setIndex: tdcFrame=${keyFrameSet.tdcFrame?.frameNumber}, bdcFrame=${keyFrameSet.bdcFrame?.frameNumber}, 3OClockFrame=${keyFrameSet.threeOClockFrame?.frameNumber}")
+            
+            // Add frames and their associated angles
+            keyFrameSet.tdcFrame?.let { frame ->
+                android.util.Log.d("FitSummaryActivity", "displayKeyFrames: Adding TDC frame ${frame.frameNumber}, bitmap=${frame.bitmap != null}")
+                val angles = mapOf(
+                    "Hip" to (summary.cycleSummary?.averageHipAngleAtTdc ?: 0f),
+                    "Knee" to (summary.cycleSummary?.averageKneeAngleAtTdc ?: 0f)
+                )
+                allKeyFrames.add(Pair(frame, angles))
+            }
+            
+            keyFrameSet.bdcFrame?.let { frame ->
+                android.util.Log.d("FitSummaryActivity", "displayKeyFrames: Adding BDC frame ${frame.frameNumber}, bitmap=${frame.bitmap != null}")
+                val angles = mapOf(
+                    "Knee" to (summary.cycleSummary?.averageKneeAngleAtBdc ?: 0f),
+                    "Ankle" to (summary.cycleSummary?.averageAnkleAngleAtBdc ?: 0f)
+                )
+                allKeyFrames.add(Pair(frame, angles))
+            }
+            
+            keyFrameSet.threeOClockFrame?.let { frame ->
+                android.util.Log.d("FitSummaryActivity", "displayKeyFrames: Adding 3 O'Clock frame ${frame.frameNumber}, bitmap=${frame.bitmap != null}")
+                val angles = mapOf(
+                    "KOPS" to ((summary.cycleSummary?.averageKopsNormalized ?: 0f) * 100), // Show as percentage
+                    "Knee" to (summary.cycleSummary?.averageKneeAngleRange ?: 0f)
+                )
+                allKeyFrames.add(Pair(frame, angles))
+            }
+        }
+
+        android.util.Log.d("FitSummaryActivity", "displayKeyFrames: Total frames to display: ${allKeyFrames.size}")
+        if (allKeyFrames.isEmpty()) {
+            android.util.Log.d("FitSummaryActivity", "displayKeyFrames: No key frames collected, hiding section")
+            keyFramesHeader.visibility = View.GONE
+            keyFramesScroll.visibility = View.GONE
+            return
+        }
+
+        // Display key frames
+        keyFramesHeader.visibility = View.VISIBLE
+        keyFramesScroll.visibility = View.VISIBLE
+        
+        keyFramesContainer.removeAllViews()
+        
+        for ((index, pair) in allKeyFrames.withIndex()) {
+            val (frame, angles) = pair
+            android.util.Log.d("FitSummaryActivity", "displayKeyFrames: Creating display view for frame ${frame.frameNumber} (index $index)")
+            val displayView = KeyFrameDisplayView(this)
+            displayView.setKeyFrame(frame, angles)
+            
+            // Responsive sizing based on screen width
+            val displayMetrics = resources.displayMetrics
+            val screenWidthDp = displayMetrics.widthPixels / displayMetrics.density
+            val frameWidthDp = (screenWidthDp * 0.85).toInt().coerceIn(300, 540)
+            
+            val params = android.widget.LinearLayout.LayoutParams(
+                dpToPx(frameWidthDp),
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            params.marginEnd = dpToPx(12)
+            params.bottomMargin = dpToPx(12)
+            
+            displayView.layoutParams = params
+            keyFramesContainer.addView(displayView)
+            android.util.Log.d("FitSummaryActivity", "displayKeyFrames: Added view for frame ${frame.frameNumber}")
+        }
+        
+        android.util.Log.d("FitSummaryActivity", "displayKeyFrames: Completed, added ${allKeyFrames.size} frame views")
+    }
+
+    /**
+     * Converts dp to pixels.
+     */
+    private fun dpToPx(dp: Int): Int {
+        return (dp * resources.displayMetrics.density).toInt()
+    }
+
+    /**
      * Displays the fit grade with appropriate styling.
      */
     private fun displayGrade(grade: FitGrade) {
@@ -365,6 +489,11 @@ class FitSummaryActivity : AppCompatActivity() {
          * For production, consider using a ViewModel or Parcelable.
          */
         var currentSummary: FitSummary? = null
+        
+        /**
+         * Current analysis result containing key frames.
+         */
+        var currentAnalysisResult: FitAnalysisResult? = null
 
         /**
          * Creates an intent to start this activity.
@@ -376,8 +505,10 @@ class FitSummaryActivity : AppCompatActivity() {
         /**
          * Starts the activity with the given summary.
          */
-        fun start(context: Context, summary: FitSummary) {
+        fun start(context: Context, summary: FitSummary, result: FitAnalysisResult? = null) {
             currentSummary = summary
+            currentAnalysisResult = result
+            android.util.Log.d("FitSummaryActivity", "start() called with result: $result, keyFrameSetLeft: ${result?.keyFrameSetLeft}, keyFrameSetRight: ${result?.keyFrameSetRight}")
             context.startActivity(createIntent(context))
         }
     }

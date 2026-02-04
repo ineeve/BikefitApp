@@ -71,6 +71,13 @@ class VideoAnalysisActivity : AppCompatActivity() {
     private val leftCycleAggregator = CycleAggregator(BodySide.LEFT)
     private val rightCycleAggregator = CycleAggregator(BodySide.RIGHT)
     
+    // Key frame capture for 3 critical positions
+    private val leftKeyFrameSet = mutableMapOf<CriticalPedalPosition, Triple<Long, Bitmap?, PoseFrame?>>()
+    private val rightKeyFrameSet = mutableMapOf<CriticalPedalPosition, Triple<Long, Bitmap?, PoseFrame?>>()
+    
+    // Track captured frames to prevent duplicates
+    private val capturedFrameNumbers = mutableSetOf<String>()
+    
     // Video info
     private var videoDurationMs = 0L
 
@@ -605,6 +612,32 @@ class VideoAnalysisActivity : AppCompatActivity() {
         
         aggregator.addMeasurement(frameNumber, timestampMs, kneeAngle, hipAngle, torsoAngle, ankleAngle, kopsNormalized)
         
+        // Capture key frames at critical pedal positions
+        val keyFrameMap = if (side == BodySide.LEFT) leftKeyFrameSet else rightKeyFrameSet
+        val sidePrefix = if (side == BodySide.LEFT) "L" else "R"
+        
+        // Check for 3 O'Clock position (pedal at horizontal)
+        Log.d(TAG, "processSideMetrics: Checking 3 O'Clock detection for frame $frameNumber, side $side, poseFrame valid: ${poseFrame.isValid}, landmarks: ${poseFrame.landmarks.size}")
+        val threeOClockEvent = ThreeOClockDetector.detectAtFrame(poseFrame, side)
+        Log.d(TAG, "processSideMetrics: 3 O'Clock detection result: $threeOClockEvent, already captured: ${keyFrameMap.containsKey(CriticalPedalPosition.THREE_O_CLOCK)}")
+        
+        if (threeOClockEvent != null && !keyFrameMap.containsKey(CriticalPedalPosition.THREE_O_CLOCK)) {
+            val frameKey = "${sidePrefix}_3OCLOCK_${frameNumber}"
+            if (!capturedFrameNumbers.contains(frameKey)) {
+                Log.d(TAG, "processSideMetrics: Capturing 3 O'Clock frame at $frameNumber, storing frameNumber=$frameNumber")
+                val bitmap = currentVideoFrameBitmap?.let {
+                    // Create a completely independent copy
+                    val copy = it.copy(it.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
+                    copy
+                }
+                Log.d(TAG, "processSideMetrics: Before storing 3 O'Clock - frameNumber=$frameNumber, bitmap!=null=${bitmap != null}")
+                keyFrameMap[CriticalPedalPosition.THREE_O_CLOCK] = Triple(frameNumber, bitmap, poseFrame.copy())
+                capturedFrameNumbers.add(frameKey)
+                Log.d(TAG, "processSideMetrics: After storing 3 O'Clock - keyFrameMap[THREE_O_CLOCK]?.first=${keyFrameMap[CriticalPedalPosition.THREE_O_CLOCK]?.first}")
+                Log.d(TAG, "Captured 3 O'Clock frame at frame $frameNumber, side $side, bitmap: ${bitmap != null}")
+            }
+        }
+        
         val events = pedalDetector.processAnklePosition(
             frameNumber = frameNumber,
             timestampMs = timestampMs,
@@ -612,9 +645,24 @@ class VideoAnalysisActivity : AppCompatActivity() {
             visibility = ankle.visibility,
             side = side
         )
+        Log.d(TAG, "processSideMetrics: Pedal events at frame $frameNumber, side $side: ${events.map { it.type }}, ankleY: ${ankle.y}, visibility: ${ankle.visibility}")
         
         for (event in events) {
             if (event.type == PedalExtremum.BDC) {
+                // Capture BDC frame if not already captured
+                if (!keyFrameMap.containsKey(CriticalPedalPosition.BDC)) {
+                    val frameKey = "${sidePrefix}_BDC_${frameNumber}"
+                    if (!capturedFrameNumbers.contains(frameKey)) {
+                        val bitmap = currentVideoFrameBitmap?.let {
+                            // Create a completely independent copy
+                            it.copy(it.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
+                        }
+                        keyFrameMap[CriticalPedalPosition.BDC] = Triple(frameNumber, bitmap, poseFrame.copy())
+                        capturedFrameNumbers.add(frameKey)
+                        Log.d(TAG, "Captured BDC frame at frame $frameNumber, side $side, bitmap: ${bitmap != null}")
+                    }
+                }
+                
                 val angleAtBdc = kneeAngle ?: 0f 
                 val cycleMetrics = aggregator.endCycleAtBdc(event.frameNumber, event.timestampMs, angleAtBdc, ankleAngle)
                 
@@ -633,6 +681,20 @@ class VideoAnalysisActivity : AppCompatActivity() {
                     }
                 }
             } else if (event.type == PedalExtremum.TDC) {
+                // Capture TDC frame if not already captured
+                if (!keyFrameMap.containsKey(CriticalPedalPosition.TDC)) {
+                    val frameKey = "${sidePrefix}_TDC_${frameNumber}"
+                    if (!capturedFrameNumbers.contains(frameKey)) {
+                        val bitmap = currentVideoFrameBitmap?.let {
+                            // Create a completely independent copy
+                            it.copy(it.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
+                        }
+                        keyFrameMap[CriticalPedalPosition.TDC] = Triple(frameNumber, bitmap, poseFrame.copy())
+                        capturedFrameNumbers.add(frameKey)
+                        Log.d(TAG, "Captured TDC frame at frame $frameNumber, side $side, bitmap: ${bitmap != null}")
+                    }
+                }
+                
                 // Record TDC for the aggregator (including hip angle at TDC)
                 aggregator.recordTdc(kneeAngle, hipAngle)
             }
@@ -666,10 +728,79 @@ class VideoAnalysisActivity : AppCompatActivity() {
         val config = FitEngineConfig.forContext(selectedContext, selectedBias)
         val engine = FitEngine(config)
         val result = engine.analyze(input)
-        val summary = FitSummary.fromAnalysisResult(result, selectedContext, selectedBias)
         
-        FitSummaryActivity.start(this, summary)
+        // Create KeyFrameSets from captured frames with pose and angles data
+        val leftFrameSet = createKeyFrameSet(leftKeyFrameSet, BodySide.LEFT)
+        val rightFrameSet = createKeyFrameSet(rightKeyFrameSet, BodySide.RIGHT)
+        
+        Log.d(TAG, "finishAnalysis: leftFrameSet = $leftFrameSet, rightFrameSet = $rightFrameSet")
+        Log.d(TAG, "finishAnalysis: leftFrameSet.hasAnyFrames() = ${leftFrameSet.hasAnyFrames()}, rightFrameSet.hasAnyFrames() = ${rightFrameSet.hasAnyFrames()}")
+        
+        // Create analysis result with key frames
+        val resultWithKeyFrames = result.copy(
+            keyFrameSetLeft = leftFrameSet,
+            keyFrameSetRight = rightFrameSet
+        )
+        
+        Log.d(TAG, "finishAnalysis: resultWithKeyFrames.keyFrameSetLeft = ${resultWithKeyFrames.keyFrameSetLeft}, resultWithKeyFrames.keyFrameSetRight = ${resultWithKeyFrames.keyFrameSetRight}")
+        
+        val summary = FitSummary.fromAnalysisResult(resultWithKeyFrames, selectedContext, selectedBias)
+        
+        FitSummaryActivity.start(this, summary, resultWithKeyFrames)
         finish() 
+    }
+    
+    /**
+     * Creates a KeyFrameSet from captured key frame data.
+     * 
+     * @param capturedFrames Map of CriticalPedalPosition to frame data (frameNum, bitmap, poseFrame)
+     * @param side Body side
+     * @return KeyFrameSet with captured frames
+     */
+    private fun createKeyFrameSet(
+        capturedFrames: Map<CriticalPedalPosition, Triple<Long, Bitmap?, PoseFrame?>>,
+        side: BodySide
+    ): KeyFrameSet {
+        val tdcFrame = capturedFrames[CriticalPedalPosition.TDC]?.let { (frameNum, bitmap, poseFrame) ->
+            KeyFrameDataPoint(
+                frameNumber = frameNum,
+                timestampMs = frameNum * 33, // Approximate timestamp
+                position = CriticalPedalPosition.TDC,
+                bitmap = bitmap,
+                poseFrame = poseFrame,
+                side = side
+            )
+        }
+        
+        val bdcFrame = capturedFrames[CriticalPedalPosition.BDC]?.let { (frameNum, bitmap, poseFrame) ->
+            KeyFrameDataPoint(
+                frameNumber = frameNum,
+                timestampMs = frameNum * 33, // Approximate timestamp
+                position = CriticalPedalPosition.BDC,
+                bitmap = bitmap,
+                poseFrame = poseFrame,
+                side = side
+            )
+        }
+        
+        val threeOClockFrame = capturedFrames[CriticalPedalPosition.THREE_O_CLOCK]?.let { (frameNum, bitmap, poseFrame) ->
+            Log.d(TAG, "createKeyFrameSet: THREE_O_CLOCK frameNum=$frameNum, bitmap!=null=${bitmap != null}, poseFrame!=null=${poseFrame != null}")
+            KeyFrameDataPoint(
+                frameNumber = frameNum,
+                timestampMs = frameNum * 33, // Approximate timestamp
+                position = CriticalPedalPosition.THREE_O_CLOCK,
+                bitmap = bitmap,
+                poseFrame = poseFrame,
+                side = side
+            )
+        }
+        
+        return KeyFrameSet(
+            tdcFrame = tdcFrame,
+            bdcFrame = bdcFrame,
+            threeOClockFrame = threeOClockFrame,
+            side = side
+        )
     }
 
     private fun getBitmapRect(imageView: ImageView): RectF? {

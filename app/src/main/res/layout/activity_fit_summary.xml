@@ -483,6 +483,42 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- Key Frames Section -->
+            <TextView
+                android:id="@+id/key_frames_header"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginTop="24dp"
+                android:layout_marginBottom="8dp"
+                android:text="Critical Pedal Positions"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:textColor="@color/recommendation_text_primary"
+                android:visibility="gone"
+                tools:visibility="visible" />
+
+            <!-- Key Frames Horizontal Scroll -->
+            <HorizontalScrollView
+                android:id="@+id/key_frames_scroll"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginTop="8dp"
+                android:clipToPadding="false"
+                android:paddingHorizontal="8dp"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <LinearLayout
+                    android:id="@+id/key_frames_container"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:spacing="12dp" />
+
+            </HorizontalScrollView>
+
             <!-- Recommendations section header -->
             <TextView
                 android:id="@+id/recommendations_header"

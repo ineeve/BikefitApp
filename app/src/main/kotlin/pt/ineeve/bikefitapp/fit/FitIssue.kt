@@ -260,7 +260,9 @@ data class FitAnalysisResult(
     val issues: List<FitIssue>,
     val analysisTimestampMs: Long = System.currentTimeMillis(),
     val cycleCount: Int = 0,
-    val cycleSummary: CycleSummary? = null
+    val cycleSummary: CycleSummary? = null,
+    val keyFrameSetLeft: pt.ineeve.bikefitapp.biomechanics.KeyFrameSet? = null,
+    val keyFrameSetRight: pt.ineeve.bikefitapp.biomechanics.KeyFrameSet? = null
 ) {
     /**
      * Returns the highest severity issue, or null if no issues.

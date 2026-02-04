@@ -28,6 +28,6 @@
     
     <!-- Fit Recommendations UI -->
     <color name="recommendation_card_background">#FFFAFAFA</color>
-    <color name="recommendation_text_primary">#DE000000</color>
+    <color name="recommendation_text_primary">#FFFFFFFF</color>
     <color name="recommendation_text_secondary">#8A000000</color>
 </resources>
