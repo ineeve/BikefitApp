@@ -8,6 +8,7 @@ import android.graphics.PointF
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import pt.ineeve.bikefitapp.ui.ViewCoordinateMapper
 
 /**
  * Custom view overlay for displaying and collecting bike calibration points.
@@ -82,6 +83,8 @@ class CalibrationOverlayView @JvmOverloads constructor(
         color = Color.argb(180, 0, 0, 0)
     }
 
+    private val mapper = pt.ineeve.bikefitapp.ui.ViewCoordinateMapper()
+
     companion object {
         /** Radius of the point marker circle */
         private const val POINT_RADIUS = 24f
@@ -110,16 +113,39 @@ class CalibrationOverlayView @JvmOverloads constructor(
     }
 
     /**
-     * Updates the current calibration state.
+     * Sets the current calibration state.
      */
     fun setState(state: CalibrationState) {
         this.state = state
         invalidate()
     }
 
+    /** View scale type for mapping coordinates */
+    var scaleType: ViewCoordinateMapper.ScaleType 
+        get() = mapper.scaleType
+        set(value) {
+            mapper.scaleType = value
+            invalidate()
+        }
+
+    /**
+     * Sets the image source info for coordinate mapping.
+     */
+    fun setImageSourceInfo(width: Int, height: Int, isMirrored: Boolean = false) {
+        if (mapper.setDimensions(width, height, getWidth(), getHeight(), isMirrored)) {
+            invalidate()
+        }
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        mapper.setDimensions(mapper.imageWidth, mapper.imageHeight, w, h, mapper.isMirrored)
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        val normalizedX = event.x / width
-        val normalizedY = event.y / height
+        val imagePoint = mapper.mapToImage(event.x, event.y)
+        val normalizedX = imagePoint.x
+        val normalizedY = imagePoint.y
         
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
@@ -162,17 +188,20 @@ class CalibrationOverlayView @JvmOverloads constructor(
      */
     private fun findPointAt(x: Float, y: Float): BikeReferencePointType? {
         calibration.saddleTop?.let { point ->
-            if (isPointNear(x, y, point.x * width, point.y * height)) {
+            val viewPoint = mapper.mapToView(point.x, point.y)
+            if (isPointNear(x, y, viewPoint.x, viewPoint.y)) {
                 return BikeReferencePointType.SADDLE_TOP
             }
         }
         calibration.bottomBracket?.let { point ->
-            if (isPointNear(x, y, point.x * width, point.y * height)) {
+            val viewPoint = mapper.mapToView(point.x, point.y)
+            if (isPointNear(x, y, viewPoint.x, viewPoint.y)) {
                 return BikeReferencePointType.BOTTOM_BRACKET
             }
         }
         calibration.handlebar?.let { point ->
-            if (isPointNear(x, y, point.x * width, point.y * height)) {
+            val viewPoint = mapper.mapToView(point.x, point.y)
+            if (isPointNear(x, y, viewPoint.x, viewPoint.y)) {
                 return BikeReferencePointType.HANDLEBAR
             }
         }
@@ -223,8 +252,9 @@ class CalibrationOverlayView @JvmOverloads constructor(
      * Draws a reference point with label.
      */
     private fun drawPoint(canvas: Canvas, point: BikeReferencePoint, label: String, color: Int, isSelected: Boolean = false) {
-        val x = point.x * width
-        val y = point.y * height
+        val viewPoint = mapper.mapToView(point.x, point.y)
+        val x = viewPoint.x
+        val y = viewPoint.y
         
         // Draw selection indicator if selected
         if (isSelected) {
@@ -291,13 +321,13 @@ class CalibrationOverlayView @JvmOverloads constructor(
         val points = mutableListOf<PointF>()
         
         calibration.saddleTop?.let { 
-            points.add(PointF(it.x * width, it.y * height))
+            points.add(mapper.mapToView(it.x, it.y))
         }
         calibration.bottomBracket?.let { 
-            points.add(PointF(it.x * width, it.y * height))
+            points.add(mapper.mapToView(it.x, it.y))
         }
         calibration.handlebar?.let { 
-            points.add(PointF(it.x * width, it.y * height))
+            points.add(mapper.mapToView(it.x, it.y))
         }
         
         // Draw lines between consecutive points

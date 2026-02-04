@@ -32,6 +32,9 @@ class CameraManager(private val context: Context) {
     private var frameCallback: FrameAnalysisCallback? = null
     private val frameSampler = FrameSampler()
 
+    /** Listener for image source information (resolution, rotation) */
+    var imageInfoListener: ((width: Int, height: Int, rotation: Int) -> Unit)? = null
+
     companion object {
         private const val TAG = "CameraManager"
         
@@ -43,14 +46,19 @@ class CameraManager(private val context: Context) {
     }
 
     /**
-     * Starts the camera preview bound to the given lifecycle.
+     * Updates the target rotation for all use cases.
+     * Call this when the device rotation changes.
      * 
-     * @param lifecycleOwner The lifecycle owner to bind the camera to
-     * @param previewView The PreviewView to display the camera feed
-     * @param cameraSelector Which camera to use (default: back camera)
-     * @param frameAnalysisCallback Optional callback to receive frames for analysis
-     * @param targetFps Target frames per second for analysis (default: 10 FPS)
-     * @param onError Callback for error handling
+     * @param rotation The new rotation (e.g. Surface.ROTATION_0, ROTATION_90, etc.)
+     */
+    fun updateTargetRotation(rotation: Int) {
+        preview?.targetRotation = rotation
+        imageAnalysis?.targetRotation = rotation
+        Log.d(TAG, "Target rotation updated: $rotation")
+    }
+
+    /**
+     * Starts the camera preview bound to the given lifecycle.
      */
     fun startCamera(
         lifecycleOwner: LifecycleOwner,
@@ -210,13 +218,25 @@ class CameraManager(private val context: Context) {
      */
     private fun processFrame(imageProxy: androidx.camera.core.ImageProxy) {
         try {
+            val rotationDegrees = imageProxy.imageInfo.rotationDegrees
+            
+            // Notify listener about image info if changed (using rotated dimensions)
+            val isRotated = rotationDegrees == 90 || rotationDegrees == 270
+            val bitmapWidth = if (isRotated) imageProxy.height else imageProxy.width
+            val bitmapHeight = if (isRotated) imageProxy.width else imageProxy.height
+            
+            imageInfoListener?.let { listener ->
+                Handler(Looper.getMainLooper()).post {
+                    listener(bitmapWidth, bitmapHeight, rotationDegrees)
+                }
+            }
+
             val callback = frameCallback
             if (callback != null) {
                 val timestampMs = imageProxy.imageInfo.timestamp / 1_000_000 // Convert ns to ms
                 
                 // Apply frame sampling - skip frames that are too close together
                 if (frameSampler.shouldProcessFrame(timestampMs)) {
-                    val rotationDegrees = imageProxy.imageInfo.rotationDegrees
                     val bitmap = ImageProxyConverter.toBitmap(imageProxy, rotationDegrees)
                     callback.onFrameAvailable(bitmap, timestampMs, rotationDegrees)
                 }

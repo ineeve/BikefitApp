@@ -84,7 +84,9 @@ object KneeAngleCalculator {
         return calculateKneeAngleFromLandmarks(
             poseResult.landmarks,
             side,
-            visibilityThreshold
+            visibilityThreshold,
+            poseResult.inputImageWidth,
+            poseResult.inputImageHeight
         )
     }
 
@@ -108,7 +110,9 @@ object KneeAngleCalculator {
         return calculateKneeAngleFromLandmarks(
             poseFrame.landmarks,
             side,
-            visibilityThreshold
+            visibilityThreshold,
+            poseFrame.imageWidth,
+            poseFrame.imageHeight
         )
     }
 
@@ -118,12 +122,16 @@ object KneeAngleCalculator {
      * @param landmarks List of 33 pose landmarks
      * @param side Which leg to analyze (LEFT or RIGHT)
      * @param visibilityThreshold Minimum visibility for landmarks to be valid
+     * @param imageWidth Image width for aspect ratio correction (optional)
+     * @param imageHeight Image height for aspect ratio correction (optional)
      * @return KneeAngleResult with the calculated angle or invalid result
      */
     fun calculateKneeAngleFromLandmarks(
         landmarks: List<Landmark>,
         side: BodySide,
-        visibilityThreshold: Float = DEFAULT_VISIBILITY_THRESHOLD
+        visibilityThreshold: Float = DEFAULT_VISIBILITY_THRESHOLD,
+        imageWidth: Int = 0,
+        imageHeight: Int = 0
     ): KneeAngleResult {
         if (landmarks.size < PoseLandmarkIndex.LANDMARK_COUNT) {
             return KneeAngleResult.invalid(side)
@@ -164,7 +172,7 @@ object KneeAngleCalculator {
         val confidence = (hip.visibility + knee.visibility + ankle.visibility) / 3f
 
         // Calculate angle using Vector2D
-        val angle = calculateAngleAtKnee(hip, knee, ankle)
+        val angle = calculateAngleAtKnee(hip, knee, ankle, imageWidth, imageHeight)
 
         return KneeAngleResult(
             angle = angle,
@@ -220,11 +228,13 @@ object KneeAngleCalculator {
     internal fun calculateAngleAtKnee(
         hip: Landmark,
         knee: Landmark,
-        ankle: Landmark
+        ankle: Landmark,
+        imageWidth: Int = 0,
+        imageHeight: Int = 0
     ): Float {
-        val hipPoint = Vector2D(hip.x, hip.y)
-        val kneePoint = Vector2D(knee.x, knee.y)
-        val anklePoint = Vector2D(ankle.x, ankle.y)
+        val hipPoint = Vector2D.fromLandmark(hip, imageWidth, imageHeight)
+        val kneePoint = Vector2D.fromLandmark(knee, imageWidth, imageHeight)
+        val anklePoint = Vector2D.fromLandmark(ankle, imageWidth, imageHeight)
 
         return Vector2D.angleAtVertex(
             a = hipPoint,

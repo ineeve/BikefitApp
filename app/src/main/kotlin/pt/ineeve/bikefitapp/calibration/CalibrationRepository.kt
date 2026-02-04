@@ -57,10 +57,10 @@ object CalibrationRepository {
     /**
      * Checks if a valid calibration is available.
      * 
-     * @return true if calibration is complete with all three points
+     * @return true if calibration has all three reference points
      */
     fun hasValidCalibration(): Boolean {
-        return currentCalibration?.isComplete == true
+        return currentCalibration?.hasAllPoints == true
     }
 
     /**

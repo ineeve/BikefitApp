@@ -1,5 +1,6 @@
 package pt.ineeve.bikefitapp.fit
 
+import pt.ineeve.bikefitapp.biomechanics.BikeRelativeMeasurements
 import pt.ineeve.bikefitapp.calibration.BikeCalibration
 import pt.ineeve.bikefitapp.pose.Landmark
 import pt.ineeve.bikefitapp.pose.PoseFrame
@@ -145,11 +146,14 @@ class SaddleForeAftRule(
     /**
      * Measures KOPS from a pose frame and bike calibration.
      * 
-     * The pedal spindle X position is approximated from the bottom bracket,
-     * as the pedal is directly forward of BB at 3 o'clock position.
+     * Uses the calibrated bottom bracket position and crank length (if available)
+     * to calculate the actual pedal position at 3 o'clock.
+     * 
+     * If calibration includes crank length, uses enhanced bike-relative KOPS calculation
+     * that normalizes by femur length for more accurate, scale-independent analysis.
      * 
      * @param poseFrame The pose frame to analyze (should be at ~3 o'clock crank position)
-     * @param calibration Bike calibration with bottom bracket marked
+     * @param calibration Bike calibration with bottom bracket and optionally crank length
      * @param side Which side to measure (left or right knee)
      * @return KopsResult with the measurement
      */
@@ -161,29 +165,50 @@ class SaddleForeAftRule(
         // Need bottom bracket for pedal spindle reference
         val bottomBracket = calibration.bottomBracket ?: return KopsResult.INVALID
 
-        // Get knee landmark
+        // Get knee and hip landmarks
         val kneeIndex = if (side == pt.ineeve.bikefitapp.biomechanics.BodySide.LEFT) {
             PoseLandmarkIndex.LEFT_KNEE
         } else {
             PoseLandmarkIndex.RIGHT_KNEE
         }
+        
+        val hipIndex = if (side == pt.ineeve.bikefitapp.biomechanics.BodySide.LEFT) {
+            PoseLandmarkIndex.LEFT_HIP
+        } else {
+            PoseLandmarkIndex.RIGHT_HIP
+        }
 
-        if (poseFrame.landmarks.size <= kneeIndex) {
+        if (poseFrame.landmarks.size <= kneeIndex || poseFrame.landmarks.size <= hipIndex) {
             return KopsResult.INVALID
         }
 
         val knee = poseFrame.landmarks[kneeIndex]
+        val hip = poseFrame.landmarks[hipIndex]
+        
         if (!knee.isVisible(config.minVisibility)) {
             return KopsResult.INVALID
         }
 
-        // At 3 o'clock, pedal spindle is forward of bottom bracket by crank length
-        // Since we don't know exact crank length, we use BB X as approximation
-        // The user should capture at 3 o'clock where pedal is directly forward
-        val pedalSpindleX = bottomBracket.x
+        // Calculate pedal position at 3 o'clock
+        // If crank length is available, use it for more accurate pedal position
+        val pedalSpindleX = calibration.getPedalPositionAt3OClock() ?: bottomBracket.x
 
-        // Calculate offset: positive = knee forward, negative = knee behind
-        val offset = knee.x - pedalSpindleX
+        // Try to use enhanced bike-relative KOPS if hip is visible and calibration has crank length
+        val offset = if (hip.isVisible(config.minVisibility) && calibration.crankLengthMm != null) {
+            // Use normalized KOPS calculation (scale-independent)
+            val normalizedKops = BikeRelativeMeasurements.computeKOPSWithBottomBracket(
+                knee = knee,
+                hip = hip,
+                calibration = calibration
+            )
+            
+            // Convert normalized KOPS to pixel-space offset for compatibility
+            // Scale by a typical femur-to-frame-width ratio (~0.2)
+            normalizedKops?.let { it * 0.2f } ?: (knee.x - pedalSpindleX)
+        } else {
+            // Fallback to basic calculation
+            knee.x - pedalSpindleX
+        }
 
         return KopsResult(
             kneeX = knee.x,

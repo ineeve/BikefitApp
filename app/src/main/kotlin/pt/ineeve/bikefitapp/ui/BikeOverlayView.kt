@@ -131,12 +131,7 @@ class BikeOverlayView @JvmOverloads constructor(
     private val labelRect = RectF()
     
     // Image source dimensions (for coordinate transformation)
-    private var imageWidth: Int = 0
-    private var imageHeight: Int = 0
-    private var isMirrored: Boolean = false
-    private var scaleFactor: Float = 1f
-    private var postScaleWidthOffset: Float = 0f
-    private var postScaleHeightOffset: Float = 0f
+    private val mapper = ViewCoordinateMapper()
 
     // ==================== Public API ====================
     
@@ -149,40 +144,22 @@ class BikeOverlayView @JvmOverloads constructor(
      * @param isMirrored Whether the image is mirrored (front camera)
      */
     fun setImageSourceInfo(width: Int, height: Int, isMirrored: Boolean = false) {
-        this.imageWidth = width
-        this.imageHeight = height
-        this.isMirrored = isMirrored
-    }
-    
-    /**
-     * Updates the scale factor based on view and image dimensions.
-     * Called when the view is laid out.
-     */
-    private fun updateScaleFactor() {
-        if (imageWidth <= 0 || imageHeight <= 0 || width <= 0 || height <= 0) {
-            scaleFactor = 1f
-            postScaleWidthOffset = 0f
-            postScaleHeightOffset = 0f
-            return
+        if (mapper.setDimensions(width, height, getWidth(), getHeight(), isMirrored)) {
+            invalidate()
         }
-        
-        // No longer needed for simple view-relative coordinates, but kept for potential future use or if we switch back to image-relative
-        val viewAspect = width.toFloat() / height
-        val imageAspect = imageWidth.toFloat() / imageHeight
-        
-        scaleFactor = if (viewAspect > imageAspect) {
-            height.toFloat() / imageHeight
-        } else {
-            width.toFloat() / imageWidth
-        }
-        
-        postScaleWidthOffset = (width - imageWidth * scaleFactor) / 2
-        postScaleHeightOffset = (height - imageHeight * scaleFactor) / 2
     }
+
+    /** View scale type for mapping coordinates */
+    var scaleType: ViewCoordinateMapper.ScaleType 
+        get() = mapper.scaleType
+        set(value) {
+            mapper.scaleType = value
+            invalidate()
+        }
     
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        updateScaleFactor()
+        mapper.setDimensions(mapper.imageWidth, mapper.imageHeight, w, h, mapper.isMirrored)
     }
     
     /**
@@ -246,9 +223,9 @@ class BikeOverlayView @JvmOverloads constructor(
         fillPaint: Paint,
         label: String
     ) {
-        val coords = transformCoordinates(point.x, point.y)
-        val x = coords.first
-        val y = coords.second
+        val pointF = mapper.mapToView(point.x, point.y)
+        val x = pointF.x
+        val y = pointF.y
         
         // Draw diamond shape
         diamondPath.reset()
@@ -299,16 +276,13 @@ class BikeOverlayView @JvmOverloads constructor(
         val points = mutableListOf<PointF>()
         
         cal.saddleTop?.let { 
-            val coords = transformCoordinates(it.x, it.y)
-            points.add(PointF(coords.first, coords.second))
+            points.add(mapper.mapToView(it.x, it.y))
         }
         cal.bottomBracket?.let { 
-            val coords = transformCoordinates(it.x, it.y)
-            points.add(PointF(coords.first, coords.second))
+            points.add(mapper.mapToView(it.x, it.y))
         }
         cal.handlebar?.let { 
-            val coords = transformCoordinates(it.x, it.y)
-            points.add(PointF(coords.first, coords.second))
+            points.add(mapper.mapToView(it.x, it.y))
         }
         
         // Draw lines between consecutive points
@@ -339,26 +313,8 @@ class BikeOverlayView @JvmOverloads constructor(
      * @return Pair of (viewX, viewY) pixel coordinates
      */
     private fun transformCoordinates(normalizedX: Float, normalizedY: Float): Pair<Float, Float> {
-        // If no image dimensions set, fall back to simple view-based calculation
-        if (imageWidth <= 0 || imageHeight <= 0) {
-            val x = normalizedX * width
-            val y = normalizedY * height
-            return Pair(x, y)
-        }
-        
-        // Transform from normalized to pixel coordinates in image space
-        // Note: Calibration points are recorded relative to the view, which is already
-        // scaled/cropped relative to the camera image. 
-        // If the aspect ratios match between calibration and preview (which they should now),
-        // we can use simple scaling.
-        val x = normalizedX * width
-        val y = normalizedY * height
-        
-        // Handle mirroring for front camera if needed (but currently calibration is view-relative)
-        // If we were mapping from image coordinates (like pose landmarks), we'd need the complex logic.
-        // Since calibration points are % of view, and the view is consistent, we just scale back up.
-        
-        return Pair(x, y)
+        val point = mapper.mapToView(normalizedX, normalizedY)
+        return Pair(point.x, point.y)
     }
     
     /**

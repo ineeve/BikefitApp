@@ -224,23 +224,18 @@ class PoseOverlayView @JvmOverloads constructor(
     /** RectF for drawing arcs */
     private val arcRect = RectF()
 
-    enum class ScaleType {
-        FILL_CENTER, // Matches CameraX PreviewView default (Zoom to fill)
-        FIT_CENTER   // Matches ImageView fitCenter (Letterbox)
-    }
-
     /** View scale type for mapping coordinates */
-    var scaleType: ScaleType = ScaleType.FILL_CENTER
+    var scaleType: ViewCoordinateMapper.ScaleType 
+        get() = mapper.scaleType
         set(value) {
-            field = value
+            mapper.scaleType = value
             invalidate()
         }
 
     // ==================== State ====================
     
     private var currentPose: PoseResult? = null
-    private var imageWidth: Int = 0
-    private var imageHeight: Int = 0
+    private val mapper = ViewCoordinateMapper()
     
     /** Cached transformed coordinates */
     private val transformedLandmarks = mutableMapOf<Int, PointF>()
@@ -263,10 +258,10 @@ class PoseOverlayView @JvmOverloads constructor(
      * @param isFrontCamera Whether the front camera is being used (enables mirroring)
      */
     fun setImageSourceInfo(width: Int, height: Int, isFrontCamera: Boolean = false) {
-        imageWidth = width
-        imageHeight = height
-        isMirrored = isFrontCamera
-        transformedLandmarks.clear()
+        if (mapper.setDimensions(width, height, getWidth(), getHeight(), isFrontCamera)) {
+            transformedLandmarks.clear()
+            invalidate()
+        }
     }
     
     /**
@@ -329,6 +324,12 @@ class PoseOverlayView @JvmOverloads constructor(
      */
     fun hasPose(): Boolean = currentPose?.isValid == true
 
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        mapper.setDimensions(mapper.imageWidth, mapper.imageHeight, w, h, mapper.isMirrored)
+        transformedLandmarks.clear()
+    }
+
     // ==================== Drawing ====================
     
     override fun onDraw(canvas: Canvas) {
@@ -369,9 +370,7 @@ class PoseOverlayView @JvmOverloads constructor(
      * Used for custom vertex positions that aren't at landmarks.
      */
     private fun transformPoint(normalizedX: Float, normalizedY: Float): PointF {
-        // Create a temporary landmark for transformation
-        val tempLandmark = Landmark(normalizedX, normalizedY, 0f, 1f, 1f)
-        return transformCoordinates(tempLandmark)
+        return mapper.mapToView(normalizedX, normalizedY)
     }
     
     /**
@@ -379,59 +378,7 @@ class PoseOverlayView @JvmOverloads constructor(
      * Handles proper scaling and cropping to match PreviewView's FILL_CENTER behavior.
      */
     private fun transformCoordinates(landmark: Landmark): PointF {
-        // If image source info is not available, fallback to stretch
-        if (imageWidth <= 0 || imageHeight <= 0) {
-            var x = landmark.x * width
-            val y = landmark.y * height
-            if (isMirrored) x = width - x
-            return PointF(x, y)
-        }
-
-        // Calculate scale to fill the view (maintaining aspect ratio)
-        val viewAspectRatio = width.toFloat() / height
-        val imageAspectRatio = imageWidth.toFloat() / imageHeight
-        
-        val scaleFactor = when (scaleType) {
-            ScaleType.FILL_CENTER -> {
-                if (viewAspectRatio > imageAspectRatio) {
-                    // View is wider than image: scale to match width
-                    width.toFloat() / imageWidth
-                } else {
-                    // View is taller than image: scale to match height
-                    height.toFloat() / imageHeight
-                }
-            }
-            ScaleType.FIT_CENTER -> {
-                if (viewAspectRatio > imageAspectRatio) {
-                    // View is wider than image: scale to match height
-                    height.toFloat() / imageHeight
-                } else {
-                    // View is taller than image: scale to match width
-                    width.toFloat() / imageWidth
-                }
-            }
-        }
-
-        // Calculate the scaled dimensions
-        val scaledWidth = imageWidth * scaleFactor
-        val scaledHeight = imageHeight * scaleFactor
-
-        // Calculate centering offsets (will be negative for the cropped axis)
-        val xOffset = (width - scaledWidth) / 2
-        val yOffset = (height - scaledHeight) / 2
-
-        // Transform coordinate
-        var x = (landmark.x * imageWidth * scaleFactor) + xOffset
-        val y = (landmark.y * imageHeight * scaleFactor) + yOffset
-        
-        // Mirror horizontally if front camera
-        // Note: We mirror relative to the *view* width, after transformation
-        if (isMirrored) {
-            // For mirrored wrap, we reflect across the view center
-            x = width - x
-        }
-        
-        return PointF(x, y)
+        return mapper.mapToView(landmark.x, landmark.y)
     }
     
     /**

@@ -43,8 +43,8 @@ class CoordinateTransformer(
     private val origin: BikeReferencePoint
 
     init {
-        require(calibration.isComplete) { 
-            "Calibration must be complete to create transformer" 
+        require(calibration.hasAllPoints) { 
+            "Calibration must have all reference points to create transformer" 
         }
         
         origin = calibration.bottomBracket!!
@@ -208,7 +208,7 @@ class CoordinateTransformer(
             landmarks: List<Landmark>,
             calibration: BikeCalibration
         ): List<Landmark> {
-            require(calibration.isComplete) { "Calibration must be complete" }
+            require(calibration.hasAllPoints) { "Calibration must have all reference points" }
             
             val origin = calibration.bottomBracket!!
             val saddle = calibration.saddleTop!!
@@ -227,7 +227,7 @@ class CoordinateTransformer(
          */
         fun fromRepository(): CoordinateTransformer? {
             val calibration = CalibrationRepository.getCalibration()
-            return if (calibration?.isComplete == true) {
+            return if (calibration?.hasAllPoints == true) {
                 CoordinateTransformer(calibration)
             } else {
                 null

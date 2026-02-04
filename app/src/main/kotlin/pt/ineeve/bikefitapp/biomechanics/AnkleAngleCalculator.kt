@@ -85,7 +85,9 @@ object AnkleAngleCalculator {
         return calculateAnkleAngleFromLandmarks(
             poseResult.landmarks,
             side,
-            visibilityThreshold
+            visibilityThreshold,
+            poseResult.inputImageWidth,
+            poseResult.inputImageHeight
         )
     }
 
@@ -109,7 +111,9 @@ object AnkleAngleCalculator {
         return calculateAnkleAngleFromLandmarks(
             poseFrame.landmarks,
             side,
-            visibilityThreshold
+            visibilityThreshold,
+            poseFrame.imageWidth,
+            poseFrame.imageHeight
         )
     }
 
@@ -126,12 +130,16 @@ object AnkleAngleCalculator {
      * @param landmarks List of 33 pose landmarks
      * @param side Which leg to analyze (LEFT or RIGHT)
      * @param visibilityThreshold Minimum visibility for landmarks to be valid
+     * @param imageWidth Image width for aspect ratio correction (optional)
+     * @param imageHeight Image height for aspect ratio correction (optional)
      * @return AnkleAngleResult with the calculated angle or invalid result
      */
     fun calculateAnkleAngleFromLandmarks(
         landmarks: List<Landmark>,
         side: BodySide,
-        visibilityThreshold: Float = DEFAULT_VISIBILITY_THRESHOLD
+        visibilityThreshold: Float = DEFAULT_VISIBILITY_THRESHOLD,
+        imageWidth: Int = 0,
+        imageHeight: Int = 0
     ): AnkleAngleResult {
         if (landmarks.size < PoseLandmarkIndex.LANDMARK_COUNT) {
             return AnkleAngleResult.invalid(side)
@@ -150,12 +158,6 @@ object AnkleAngleCalculator {
             PoseLandmarkIndex.RIGHT_ANKLE
         }
         
-        val heelIndex = if (side == BodySide.LEFT) {
-            PoseLandmarkIndex.LEFT_HEEL
-        } else {
-            PoseLandmarkIndex.RIGHT_HEEL
-        }
-        
         val footIndex = if (side == BodySide.LEFT) {
             PoseLandmarkIndex.LEFT_FOOT_INDEX
         } else {
@@ -165,53 +167,29 @@ object AnkleAngleCalculator {
         // Get the landmarks
         val knee = landmarks[kneeIndex]
         val ankle = landmarks[ankleIndex]
-        val heel = landmarks[heelIndex]
         val footIndexPoint = landmarks[footIndex]
 
         // Check visibility (now including heel)
         if (!knee.isVisible(visibilityThreshold) ||
             !ankle.isVisible(visibilityThreshold) ||
-            !heel.isVisible(visibilityThreshold) ||
             !footIndexPoint.isVisible(visibilityThreshold)) {
             return AnkleAngleResult.invalid(side)
         }
 
-        // Calculate average confidence (now including heel)
-        val confidence = (knee.visibility + ankle.visibility + heel.visibility + footIndexPoint.visibility) / 4f
+        // Calculate average confidence
+        val confidence = (knee.visibility + ankle.visibility + footIndexPoint.visibility) / 3f
 
-        // Create vectors for line intersection calculation
-        val kneePoint = Vector2D(knee.x, knee.y)
-        val anklePoint = Vector2D(ankle.x, ankle.y)
-        val heelPoint = Vector2D(heel.x, heel.y)
-        val footPoint = Vector2D(footIndexPoint.x, footIndexPoint.y)
-        
-        // Find intersection of knee-ankle line with heel-foot line
-        val intersection = Vector2D.lineIntersection(kneePoint, anklePoint, heelPoint, footPoint)
-        
-        // If lines are parallel (shouldn't happen in practice), fall back to old method
-        if (intersection == null) {
-            val vertexAngle = calculateAngleAtAnkle(knee, ankle, footIndexPoint)
-            val plantarflexion = vertexAngle - 90f
-            return AnkleAngleResult(
-                angle = plantarflexion,
-                side = side,
-                isValid = true,
-                confidence = confidence
-            )
-        }
-        
-        // Calculate angle at the intersection point
-        // The angle is between the knee direction and the foot direction
-        val vertexAngle = Vector2D.angleAtVertex(kneePoint, intersection, footPoint)
+        // Calculate angle directly using landmarks
+        // This is more robust than the intersection method which can be unstable
+        // depending on orientation and exact heel position
+        val vertexAngle = calculateAngleAtAnkle(knee, ankle, footIndexPoint, imageWidth, imageHeight)
         val plantarflexion = vertexAngle - 90f
 
         return AnkleAngleResult(
             angle = plantarflexion,
             side = side,
             isValid = true,
-            confidence = confidence,
-            intersectionX = intersection.x,
-            intersectionY = intersection.y
+            confidence = confidence
         )
     }
 
@@ -261,11 +239,13 @@ object AnkleAngleCalculator {
     internal fun calculateAngleAtAnkle(
         knee: Landmark,
         ankle: Landmark,
-        footIndex: Landmark
+        footIndex: Landmark,
+        imageWidth: Int = 0,
+        imageHeight: Int = 0
     ): Float {
-        val kneePoint = Vector2D(knee.x, knee.y)
-        val anklePoint = Vector2D(ankle.x, ankle.y)
-        val footIndexPoint = Vector2D(footIndex.x, footIndex.y)
+        val kneePoint = Vector2D.fromLandmark(knee, imageWidth, imageHeight)
+        val anklePoint = Vector2D.fromLandmark(ankle, imageWidth, imageHeight)
+        val footIndexPoint = Vector2D.fromLandmark(footIndex, imageWidth, imageHeight)
 
         return Vector2D.angleAtVertex(
             a = kneePoint,

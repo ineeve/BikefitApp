@@ -67,10 +67,23 @@ class AnkleFlexionAtBdcTest {
         } else {
             PoseLandmarkIndex.RIGHT_FOOT_INDEX
         }
+        
+        val heelIndex = if (side == BodySide.LEFT) {
+            PoseLandmarkIndex.LEFT_HEEL
+        } else {
+            PoseLandmarkIndex.RIGHT_HEEL
+        }
 
         landmarks[kneeIndex] = createLandmark(kneeX, kneeY, visibility)
         landmarks[ankleIndex] = createLandmark(ankleX, ankleY, visibility)
         landmarks[footIndex] = createLandmark(footIndexX, footIndexY, visibility)
+        
+        // Add heel landmark (collinear with foot-ankle) to satisfy AnkleAngleCalculator validation
+        val dirX = ankleX - footIndexX
+        val dirY = ankleY - footIndexY
+        val heelX = ankleX + dirX * 0.3f
+        val heelY = ankleY + dirY * 0.3f
+        landmarks[heelIndex] = createLandmark(heelX, heelY, visibility)
 
         return landmarks
     }

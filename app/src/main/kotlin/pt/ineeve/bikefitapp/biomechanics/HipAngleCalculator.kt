@@ -91,7 +91,9 @@ object HipAngleCalculator {
         return calculateHipAngleFromLandmarks(
             poseResult.landmarks,
             side,
-            visibilityThreshold
+            visibilityThreshold,
+            poseResult.inputImageWidth,
+            poseResult.inputImageHeight
         )
     }
 
@@ -115,7 +117,9 @@ object HipAngleCalculator {
         return calculateHipAngleFromLandmarks(
             poseFrame.landmarks,
             side,
-            visibilityThreshold
+            visibilityThreshold,
+            poseFrame.imageWidth,
+            poseFrame.imageHeight
         )
     }
 
@@ -125,12 +129,16 @@ object HipAngleCalculator {
      * @param landmarks List of 33 pose landmarks
      * @param side Which side to analyze (LEFT or RIGHT)
      * @param visibilityThreshold Minimum visibility for landmarks to be valid
+     * @param imageWidth Image width for aspect ratio correction (optional)
+     * @param imageHeight Image height for aspect ratio correction (optional)
      * @return HipAngleResult with the calculated angle or invalid result
      */
     fun calculateHipAngleFromLandmarks(
         landmarks: List<Landmark>,
         side: BodySide,
-        visibilityThreshold: Float = DEFAULT_VISIBILITY_THRESHOLD
+        visibilityThreshold: Float = DEFAULT_VISIBILITY_THRESHOLD,
+        imageWidth: Int = 0,
+        imageHeight: Int = 0
     ): HipAngleResult {
         if (landmarks.size < PoseLandmarkIndex.LANDMARK_COUNT) {
             return HipAngleResult.invalid(side)
@@ -171,7 +179,7 @@ object HipAngleCalculator {
         val confidence = (shoulder.visibility + hip.visibility + knee.visibility) / 3f
 
         // Calculate angle using Vector2D
-        val angle = calculateAngleAtHip(shoulder, hip, knee)
+        val angle = calculateAngleAtHip(shoulder, hip, knee, imageWidth, imageHeight)
 
         return HipAngleResult(
             angle = angle,
@@ -219,45 +227,44 @@ object HipAngleCalculator {
      * The hip flexion angle is the internal (acute) angle at the hip joint,
      * measured at the front of the body between the torso and thigh.
      * 
-     * This is calculated as 180° minus the angle at the hip vertex, because:
-     * - The vertex angle measures the posterior (back) angle
-     * - Bike fitting uses the anterior (front) hip flexion angle
-     * 
      * Typical values for cycling:
-     * - Road: 45-55° at TDC
-     * - TT/Triathlon: 40-45° at TDC
+     * - Road: 45-55° at TDC (Closed)
+     * - Straight Leg: 180° (Open)
      * 
      * @param shoulder The shoulder landmark
      * @param hip The hip landmark (vertex of the angle)
      * @param knee The knee landmark
-     * @return The hip flexion angle in degrees (typically 40-90 for cycling)
+     * @param imageWidth Image width (optional, for aspect ratio correction)
+     * @param imageHeight Image height (optional, for aspect ratio correction)
+     * @return The hip flexion angle in degrees (0-180)
      */
     internal fun calculateAngleAtHip(
         shoulder: Landmark,
         hip: Landmark,
-        knee: Landmark
+        knee: Landmark,
+        imageWidth: Int = 0,
+        imageHeight: Int = 0
     ): Float {
-        val shoulderPoint = Vector2D(shoulder.x, shoulder.y)
-        val hipPoint = Vector2D(hip.x, hip.y)
-        val kneePoint = Vector2D(knee.x, knee.y)
+        val shoulderPoint = Vector2D.fromLandmark(shoulder, imageWidth, imageHeight)
+        val hipPoint = Vector2D.fromLandmark(hip, imageWidth, imageHeight)
+        val kneePoint = Vector2D.fromLandmark(knee, imageWidth, imageHeight)
 
-        // Calculate the angle at the hip vertex (posterior angle)
+        // Calculate the angle at the hip vertex (angle between torso and femur vectors)
         val vertexAngle = Vector2D.angleAtVertex(
             a = shoulderPoint,
             b = hipPoint,
             c = kneePoint
         )
         
-        // Return the hip flexion angle (anterior/internal angle)
-        // This is the supplementary angle to the vertex angle
-        return 180f - vertexAngle
+        // Return the angle directly
+        return vertexAngle
     }
 
     /**
      * Calculates the hip flexion angle from raw coordinate values.
      * 
      * This is a convenience function for direct calculation without
-     * creating Landmark objects. Returns the internal (acute) hip angle
+     * creating Landmark objects. Returns the internal angle
      * as used in bike fitting.
      * 
      * @param shoulderX Shoulder x coordinate
@@ -266,7 +273,7 @@ object HipAngleCalculator {
      * @param hipY Hip y coordinate
      * @param kneeX Knee x coordinate
      * @param kneeY Knee y coordinate
-     * @return The hip flexion angle in degrees (typically 40-90 for cycling)
+     * @return The hip flexion angle in degrees
      */
     fun calculateHipAngleFromCoordinates(
         shoulderX: Float, shoulderY: Float,
@@ -278,7 +285,7 @@ object HipAngleCalculator {
             b = Vector2D(hipX, hipY),
             c = Vector2D(kneeX, kneeY)
         )
-        return 180f - vertexAngle
+        return vertexAngle
     }
 
     /**

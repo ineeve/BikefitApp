@@ -77,6 +77,9 @@ class CalibrationActivity : AppCompatActivity() {
         resetButton = findViewById(R.id.reset_button)
 
         cameraManager = CameraManager(this)
+        cameraManager.imageInfoListener = { width, height, _ ->
+            overlayView.setImageSourceInfo(width, height)
+        }
 
         updateUI()
     }
@@ -260,10 +263,17 @@ class CalibrationActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) 
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             == PackageManager.PERMISSION_GRANTED) {
             startCameraPreview()
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        @Suppress("DEPRECATION")
+        val rotation = windowManager.defaultDisplay.rotation
+        cameraManager.updateTargetRotation(rotation)
     }
 
     override fun onPause() {

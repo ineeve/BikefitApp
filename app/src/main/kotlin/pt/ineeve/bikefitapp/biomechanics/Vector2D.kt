@@ -296,6 +296,22 @@ data class Vector2D(
         }
 
         /**
+         * Creates a vector from a Landmark, optionally scaling to image dimensions.
+         * 
+         * @param landmark The pose landmark
+         * @param width Image width (defaults to 0, meaning no scaling)
+         * @param height Image height (defaults to 0, meaning no scaling)
+         * @return Vector2D with either normalized or pixel coordinates
+         */
+        fun fromLandmark(landmark: pt.ineeve.bikefitapp.pose.Landmark, width: Int = 0, height: Int = 0): Vector2D {
+            return if (width > 0 && height > 0) {
+                Vector2D(landmark.x * width.toFloat(), landmark.y * height.toFloat())
+            } else {
+                Vector2D(landmark.x, landmark.y)
+            }
+        }
+
+        /**
          * Calculates the angle at point B in triangle ABC.
          * 
          * This is useful for joint angle calculations where B is the joint.

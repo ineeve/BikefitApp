@@ -40,14 +40,16 @@ class AnkleAngleCalculatorTest {
     /**
      * Creates a list of 33 landmarks with specified leg landmarks.
      * All landmarks default to (0,0) with high visibility except
-     * the specified knee, ankle, and foot index for the given side.
+     * the specified knee, ankle, heel, and foot index for the given side.
      */
     private fun createLandmarksWithLeg(
         kneeX: Float, kneeY: Float,
         ankleX: Float, ankleY: Float,
         footIndexX: Float, footIndexY: Float,
         side: BodySide,
-        visibility: Float = 1.0f
+        visibility: Float = 1.0f,
+        heelX: Float? = null,
+        heelY: Float? = null
     ): List<Landmark> {
         val landmarks = MutableList(PoseLandmarkIndex.LANDMARK_COUNT) {
             createLandmark(0f, 0f, 1.0f)
@@ -71,9 +73,25 @@ class AnkleAngleCalculatorTest {
             PoseLandmarkIndex.RIGHT_FOOT_INDEX
         }
 
+        val heelIndex = if (side == BodySide.LEFT) {
+            PoseLandmarkIndex.LEFT_HEEL
+        } else {
+            PoseLandmarkIndex.RIGHT_HEEL
+        }
+
         landmarks[kneeIndex] = createLandmark(kneeX, kneeY, visibility)
         landmarks[ankleIndex] = createLandmark(ankleX, ankleY, visibility)
         landmarks[footIndex] = createLandmark(footIndexX, footIndexY, visibility)
+        
+        // Set heel slightly behind ankle by default if not provided
+        // Calculate vector from Foot to Ankle, and extend it past Ankle to place Heel
+        // This ensures Foot-Ankle-Heel are collinear by default
+        val dirX = ankleX - footIndexX
+        val dirY = ankleY - footIndexY
+        val finalHeelX = heelX ?: (ankleX + dirX * 0.3f)
+        val finalHeelY = heelY ?: (ankleY + dirY * 0.3f)
+        
+        landmarks[heelIndex] = createLandmark(finalHeelX, finalHeelY, visibility)
 
         return landmarks
     }
@@ -341,6 +359,8 @@ class AnkleAngleCalculatorTest {
         landmarks[PoseLandmarkIndex.LEFT_KNEE] = createLandmark(0f, 0f, 0.9f)
         landmarks[PoseLandmarkIndex.LEFT_ANKLE] = createLandmark(0f, 1f, 0.8f)
         landmarks[PoseLandmarkIndex.LEFT_FOOT_INDEX] = createLandmark(1f, 1f, 0.7f)
+        // Set heel visibility to ensure average is predictable: (0.9 + 0.8 + 0.7 + 0.8) / 4 = 0.8
+        landmarks[PoseLandmarkIndex.LEFT_HEEL] = createLandmark(0.1f, 1.1f, 0.8f)
 
         val result = AnkleAngleCalculator.calculateAnkleAngleFromLandmarks(
             landmarks,
@@ -348,7 +368,7 @@ class AnkleAngleCalculatorTest {
         )
 
         assertTrue(result.isValid)
-        assertEquals(0.8f, result.confidence, 0.01f) // (0.9 + 0.8 + 0.7) / 3 = 0.8
+        assertEquals(0.8f, result.confidence, 0.01f)
     }
 
     // ==================== PoseResult Tests ====================
@@ -443,11 +463,13 @@ class AnkleAngleCalculatorTest {
         landmarks[PoseLandmarkIndex.LEFT_KNEE] = createLandmark(0f, 0f, 1.0f)
         landmarks[PoseLandmarkIndex.LEFT_ANKLE] = createLandmark(0f, 1f, 1.0f)
         landmarks[PoseLandmarkIndex.LEFT_FOOT_INDEX] = createLandmark(1f, 1f, 1.0f)
+        landmarks[PoseLandmarkIndex.LEFT_HEEL] = createLandmark(-0.2f, 1f, 1.0f)
 
         // Right leg - 180 degree vertex angle = 90° plantarflexion (straight)
         landmarks[PoseLandmarkIndex.RIGHT_KNEE] = createLandmark(0.5f, 0f, 1.0f)
         landmarks[PoseLandmarkIndex.RIGHT_ANKLE] = createLandmark(0.5f, 0.5f, 1.0f)
         landmarks[PoseLandmarkIndex.RIGHT_FOOT_INDEX] = createLandmark(0.5f, 1f, 1.0f)
+        landmarks[PoseLandmarkIndex.RIGHT_HEEL] = createLandmark(0.5f, 0.4f, 1.0f)
 
         val poseResult = PoseResult(
             landmarks = landmarks,
@@ -477,11 +499,13 @@ class AnkleAngleCalculatorTest {
         landmarks[PoseLandmarkIndex.LEFT_KNEE] = createLandmark(0f, 0f, 1.0f)
         landmarks[PoseLandmarkIndex.LEFT_ANKLE] = createLandmark(0f, 1f, 1.0f)
         landmarks[PoseLandmarkIndex.LEFT_FOOT_INDEX] = createLandmark(1f, 1f, 1.0f)
+        landmarks[PoseLandmarkIndex.LEFT_HEEL] = createLandmark(-0.2f, 1f, 1.0f)
 
         // Right leg - 180 degree vertex = 90° plantarflexion (straight)
         landmarks[PoseLandmarkIndex.RIGHT_KNEE] = createLandmark(0.5f, 0f, 1.0f)
         landmarks[PoseLandmarkIndex.RIGHT_ANKLE] = createLandmark(0.5f, 0.5f, 1.0f)
         landmarks[PoseLandmarkIndex.RIGHT_FOOT_INDEX] = createLandmark(0.5f, 1f, 1.0f)
+        landmarks[PoseLandmarkIndex.RIGHT_HEEL] = createLandmark(0.5f, 0.4f, 1.0f)
 
         val poseFrame = PoseFrame(
             landmarks = landmarks,

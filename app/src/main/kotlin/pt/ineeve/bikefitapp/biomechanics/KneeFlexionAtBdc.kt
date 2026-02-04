@@ -155,17 +155,37 @@ object KneeFlexionAtBdc {
         // Compute knee angle at each BDC frame
         val kneeAngles = mutableListOf<Float>()
         
+        // Search window to find true max extension around the detected BDC
+        // BDC (lowest ankle point) doesn't always perfectly align with max knee extension
+        // due to ankling technique and seat position.
+        val searchWindowHalfWidth = 5 
+        
         for (event in bdcEvents) {
-            val frame = frameMap[event.frameNumber] ?: continue
-            
-            val kneeAngleResult = KneeAngleCalculator.calculateKneeAngle(
-                poseFrame = frame,
-                side = side,
-                visibilityThreshold = config.visibilityThreshold
-            )
-            
-            if (kneeAngleResult.isValid) {
-                kneeAngles.add(kneeAngleResult.angle)
+            val centerFrameNum = event.frameNumber
+            var maxKneeAngleForCycle = 0f
+            var foundValid = false
+
+            // Search a small window around BDC to find the peak extension
+            for (offset in -searchWindowHalfWidth..searchWindowHalfWidth) {
+                val targetFrameNum = centerFrameNum + offset
+                val frame = frameMap[targetFrameNum] ?: continue
+                
+                val kneeAngleResult = KneeAngleCalculator.calculateKneeAngle(
+                    poseFrame = frame,
+                    side = side,
+                    visibilityThreshold = config.visibilityThreshold
+                )
+                
+                if (kneeAngleResult.isValid) {
+                    if (kneeAngleResult.angle > maxKneeAngleForCycle) {
+                        maxKneeAngleForCycle = kneeAngleResult.angle
+                        foundValid = true
+                    }
+                }
+            }
+
+            if (foundValid) {
+                kneeAngles.add(maxKneeAngleForCycle)
             }
         }
 

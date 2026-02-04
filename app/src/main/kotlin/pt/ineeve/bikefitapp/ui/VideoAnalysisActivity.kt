@@ -14,6 +14,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import kotlin.coroutines.coroutineContext
@@ -83,8 +84,9 @@ class VideoAnalysisActivity : AppCompatActivity() {
         // Initialize views
         videoFrameView = findViewById(R.id.video_frame_view)
         calibrationOverlay = findViewById(R.id.calibration_overlay)
+        calibrationOverlay.scaleType = ViewCoordinateMapper.ScaleType.FIT_CENTER
         poseOverlay = findViewById(R.id.pose_overlay)
-        poseOverlay.scaleType = PoseOverlayView.ScaleType.FIT_CENTER
+        poseOverlay.scaleType = ViewCoordinateMapper.ScaleType.FIT_CENTER
         cycleMetricsOverlay = findViewById(R.id.cycle_metrics_overlay)
         
         actionButton = findViewById(R.id.action_button)
@@ -166,6 +168,8 @@ class VideoAnalysisActivity : AppCompatActivity() {
                 if (frame != null) {
                     withContext(Dispatchers.Main) {
                         videoFrameView.setImageBitmap(frame)
+                        calibrationOverlay.setImageSourceInfo(frame.width, frame.height)
+                        poseOverlay.setImageSourceInfo(frame.width, frame.height)
                     }
                 }
                 retriever.release()
@@ -179,25 +183,22 @@ class VideoAnalysisActivity : AppCompatActivity() {
         }
     }
 
-    private fun handleCalibrationTap(viewNormX: Float, viewNormY: Float) {
-        // 1. De-normalize view coords to pixels
-        val viewX = viewNormX * calibrationOverlay.width
-        val viewY = viewNormY * calibrationOverlay.height
-
-        // 2. Get image rect inside ImageView
-        val imageRect = getBitmapRect(videoFrameView) ?: return
-        
-        // 3. Check if tap is inside image
-        if (!imageRect.contains(viewX, viewY)) return
-
-        // 4. Normalize relative to image
-        val imageNormX = (viewX - imageRect.left) / imageRect.width()
-        val imageNormY = (viewY - imageRect.top) / imageRect.height()
-
+    private fun handleCalibrationTap(imageNormX: Float, imageNormY: Float) {
         val type = calibrationState.getCurrentPointType() ?: return
 
         val point = BikeReferencePoint(type, imageNormX, imageNormY)
         currentCalibration = currentCalibration.withPoint(point)
+        
+        // Validate when all points are collected
+        if (currentCalibration.isComplete) {
+            val validationError = currentCalibration.validate()
+            if (validationError != null) {
+                Toast.makeText(this, "⚠️ $validationError", Toast.LENGTH_LONG).show()
+                // Don't proceed - let user adjust the points
+                updateOverlay()
+                return
+            }
+        }
         
         // Update state
         proceedCalibrationState()
@@ -206,59 +207,78 @@ class VideoAnalysisActivity : AppCompatActivity() {
         updateOverlay()
     }
 
-    private fun handleCalibrationAdjustment(type: BikeReferencePointType, viewNormX: Float, viewNormY: Float) {
-        val viewX = viewNormX * calibrationOverlay.width
-        val viewY = viewNormY * calibrationOverlay.height
-        
-        val imageRect = getBitmapRect(videoFrameView) ?: return
-        
-        // Clamp to image area
-        val clampedX = viewX.coerceIn(imageRect.left, imageRect.right)
-        val clampedY = viewY.coerceIn(imageRect.top, imageRect.bottom)
-        
-        val imageNormX = (clampedX - imageRect.left) / imageRect.width()
-        val imageNormY = (clampedY - imageRect.top) / imageRect.height()
-        
+    private fun handleCalibrationAdjustment(type: BikeReferencePointType, imageNormX: Float, imageNormY: Float) {
         val point = BikeReferencePoint(type, imageNormX, imageNormY)
         currentCalibration = currentCalibration.withPoint(point)
         
+        // Update UI
         updateOverlay()
     }
     
-    // Map Image-Relative coordinates to View-Relative for correct display on Overlay
+    // Update Calibration Overlay with current points
     private fun updateOverlay() {
-        val imageRect = getBitmapRect(videoFrameView)
-        
-        if (imageRect == null) {
-             calibrationOverlay.setCalibration(currentCalibration)
-             calibrationOverlay.setState(calibrationState)
-             return
-        }
-
-        val w = calibrationOverlay.width.toFloat()
-        val h = calibrationOverlay.height.toFloat()
-        if (w == 0f || h == 0f) return
-
-        var viewCalibration = BikeCalibration.EMPTY
-        
-        currentCalibration.saddleTop?.let { p ->
-             viewCalibration = viewCalibration.withPoint(mapToView(p, imageRect, w, h))
-        }
-        currentCalibration.bottomBracket?.let { p ->
-             viewCalibration = viewCalibration.withPoint(mapToView(p, imageRect, w, h))
-        }
-        currentCalibration.handlebar?.let { p ->
-             viewCalibration = viewCalibration.withPoint(mapToView(p, imageRect, w, h))
-        }
-
-        calibrationOverlay.setCalibration(viewCalibration)
+        calibrationOverlay.setCalibration(currentCalibration)
         calibrationOverlay.setState(calibrationState)
     }
-
-    private fun mapToView(point: BikeReferencePoint, rect: RectF, viewW: Float, viewH: Float): BikeReferencePoint {
-        val vx = (point.x * rect.width() + rect.left) / viewW
-        val vy = (point.y * rect.height() + rect.top) / viewH
-        return BikeReferencePoint(point.type, vx, vy)
+    
+    /**
+     * Shows a dialog to collect crank length from the user.
+     * Typical crank lengths: 165, 170, 172.5, 175, 177.5, 180 mm
+     */
+    private fun showCrankLengthDialog() {
+        val input = android.widget.EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            hint = "e.g., 170, 172.5, 175"
+            setText("172.5") // Default common crank length
+            selectAll()
+        }
+        
+        val container = android.widget.FrameLayout(this).apply {
+            val params = android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+            val marginPx = (16 * resources.displayMetrics.density).toInt() // 16dp
+            val marginTopPx = (8 * resources.displayMetrics.density).toInt() // 8dp
+            params.setMargins(marginPx, marginTopPx, marginPx, 0)
+            addView(input, params)
+        }
+        
+        AlertDialog.Builder(this)
+            .setTitle("Crank Length")
+            .setMessage("Enter your crank length in millimeters.\\n\\nCommon sizes:\\n• Road bikes: 170-175mm\\n• MTB: 170-175mm\\n• TT/Tri: 165-172.5mm\\n\\nCheck your crank arm for markings.")
+            .setView(container)
+            .setPositiveButton("OK") { _, _ ->
+                val crankLengthText = input.text.toString()
+                try {
+                    val crankLength = crankLengthText.toFloat().toInt()
+                    if (crankLength in 160..185) {
+                        currentCalibration = currentCalibration.copy(crankLengthMm = crankLength)
+                        proceedCalibrationState()
+                        updateOverlay()
+                    } else {
+                        Toast.makeText(this, "Crank length must be between 160-185mm", Toast.LENGTH_LONG).show()
+                        showCrankLengthDialog() // Show again
+                    }
+                } catch (e: NumberFormatException) {
+                    Toast.makeText(this, "Please enter a valid number", Toast.LENGTH_LONG).show()
+                    showCrankLengthDialog() // Show again
+                }
+            }
+            .setNegativeButton("Skip") { _, _ ->
+                // Use default 172.5mm if skipped
+                currentCalibration = currentCalibration.copy(crankLengthMm = 172)
+                Toast.makeText(this, "Using default crank length: 172.5mm", Toast.LENGTH_SHORT).show()
+                proceedCalibrationState()
+                updateOverlay()
+            }
+            .setCancelable(false)
+            .show()
+        
+        // Request focus and show keyboard
+        input.requestFocus()
+        val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+        imm.showSoftInput(input, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
     }
 
     private fun proceedCalibrationState() {
@@ -266,6 +286,11 @@ class VideoAnalysisActivity : AppCompatActivity() {
             is CalibrationState.WaitingForSaddle -> CalibrationState.WaitingForBottomBracket
             is CalibrationState.WaitingForBottomBracket -> CalibrationState.WaitingForHandlebar
             is CalibrationState.WaitingForHandlebar -> {
+                // Show crank length input dialog
+                showCrankLengthDialog()
+                CalibrationState.WaitingForCrankLength
+            }
+            is CalibrationState.WaitingForCrankLength -> {
                 actionButton.text = "Start Analysis"
                 actionButton.visibility = View.VISIBLE
                 contextBiasCard.visibility = View.VISIBLE
@@ -416,7 +441,6 @@ class VideoAnalysisActivity : AppCompatActivity() {
         val ankleIndex = if (dominantSide == BodySide.LEFT) PoseLandmarkIndex.LEFT_ANKLE else PoseLandmarkIndex.RIGHT_ANKLE
         val shoulderIndex = if (dominantSide == BodySide.LEFT) PoseLandmarkIndex.LEFT_SHOULDER else PoseLandmarkIndex.RIGHT_SHOULDER
         val footIndex = if (dominantSide == BodySide.LEFT) PoseLandmarkIndex.LEFT_FOOT_INDEX else PoseLandmarkIndex.RIGHT_FOOT_INDEX
-        val heelIndex = if (dominantSide == BodySide.LEFT) PoseLandmarkIndex.LEFT_HEEL else PoseLandmarkIndex.RIGHT_HEEL
         val sideLabel = if (dominantSide == BodySide.LEFT) "L" else "R"
         
         // Calculate knee angle (Hip -> Knee -> Ankle)
@@ -481,15 +505,22 @@ class VideoAnalysisActivity : AppCompatActivity() {
     }
     
     /**
-     * Detects which body side is more visible to the camera.
+     * Determines which side of the body to analyze based on bike orientation.
      * 
-     * Compares the average visibility of key landmarks on each side
-     * to determine which side the user is presenting to the camera.
+     * Uses the bike calibration to determine orientation:
+     * - If bike faces left (handlebars left of saddle), analyze LEFT body side
+     * - If bike faces right (handlebars right of saddle), analyze RIGHT body side
+     * 
+     * Falls back to visibility-based detection if calibration is unavailable.
      * 
      * @param poseResult The pose detection result
-     * @return The body side with higher average visibility
+     * @return The body side visible to camera
      */
     private fun detectDominantSide(poseResult: PoseResult): BodySide {
+        // Try to use bike orientation if calibration is complete
+        currentCalibration.getCameraSide()?.let { return it }
+        
+        // Fallback: visibility-based detection
         val leftIndices = listOf(
             PoseLandmarkIndex.LEFT_SHOULDER,
             PoseLandmarkIndex.LEFT_HIP,
@@ -573,7 +604,7 @@ class VideoAnalysisActivity : AppCompatActivity() {
                         
                         cycleMetricsOverlay.updateCycleCount(totalCycles)
                         cycleMetricsOverlay.updateCycleMetrics(
-                            maxExtension = cycleMetrics.kneeAngleAtBdc ?: cycleMetrics.kneeAngle.max,
+                            maxExtension = cycleMetrics.kneeAngle.max,
                             minFlexion = cycleMetrics.kneeAngleAtTdc ?: cycleMetrics.kneeAngle.min
                         )
                     }

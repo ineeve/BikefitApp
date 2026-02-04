@@ -540,6 +540,28 @@ Calculate Knee Over Pedal Spindle (KOPS) position normalized by femur length. KO
 
 **Approach:** Measure horizontal offset between knee and pedal spindle at 3 o'clock pedal position, normalized by femur length.
 
+**IMPLEMENTATION STATUS:** ✅ Implemented with bike-relative normalization and crank length support
+
+**Crank Length Integration:**
+
+The system now collects crank length during calibration (typical range: 165-180mm) to calculate the actual pedal position at 3 o'clock:
+
+```kotlin
+// Pedal position at 3 o'clock = BB position + crank length
+val pedalX = bottomBracket.x + (crankLength / estimatedBikeSize) * normalizedDistance
+
+// More accurate than assuming pedal is at BB position
+// Typical crank length differences: 165mm vs 180mm = 15mm = ~1.5-2cm in pedal position
+```
+
+**Bike Orientation Detection:**
+
+The system uses bike calibration points (saddle, bottom bracket, handlebars) to determine bike orientation:
+- **LEFT_FACING**: Handlebars are left of saddle (camera sees rider's LEFT body side)
+- **RIGHT_FACING**: Handlebars are right of saddle (camera sees rider's RIGHT body side)
+
+This replaces the previous visibility-based side detection and ensures consistent landmark selection across all frames.
+
 **Coordinate Transformation:**
 
 ```kotlin
@@ -548,23 +570,24 @@ fun calculateKOPS(
     calibration: BikeCalibration,
     side: BodySide
 ): KOPSResult {
-    // 1. Get knee position (normalized MediaPipe coords)
+    // 1. Get knee and hip positions (normalized MediaPipe coords)
     val knee = poseFrame.getKneeLandmark(side)
+    val hip = poseFrame.getHipLandmark(side)
     
-    // 2. Transform to physical coordinates using calibration
-    val kneePhysical = transformer.toPhysicalCoordinates(
-        point = knee,
-        calibration = calibration
-    )
+    // 2. Calculate pedal position using BB and crank length
+    val pedalX = if (calibration.crankLengthMm != null) {
+        calibration.getPedalPositionAt3OClock()
+    } else {
+        calibration.bottomBracket.x  // Fallback
+    }
     
-    // 3. Get pedal spindle position (bottom bracket from calibration)
-    val pedalSpindle = calibration.bottomBracket
+    // 3. Calculate horizontal offset
+    val horizontalOffset = knee.x - pedalX
     
-    // 4. Calculate horizontal offset
-    val horizontalOffset = kneePhysical.x - pedalSpindle.x
+    // 4. Calculate femur length for normalization
+    val femurLength = distance(hip, knee)
     
-    // 5. Normalize by femur length (saddle to BB distance)
-    val femurLength = calibration.saddleToBottomBracketDistance()
+    // 5. Normalize by femur length (scale-independent)
     val normalizedOffset = horizontalOffset / femurLength
     
     return KOPSResult(
@@ -580,7 +603,21 @@ fun calculateKOPS(
 KOPS_normalized = (knee_x - pedal_spindle_x) / femur_length
 
 where:
-  femur_length ≈ saddle_to_BB_distance
+  femur_length = distance(hip, knee)
+  pedal_spindle_x = bottom_bracket.x + crank_length_normalized (at 3 o'clock)
+  crank_length_normalized = (crankLengthMm / 750mm) * saddle_to_BB_distance
+```
+
+**Bike-Relative Measurements:**
+
+Additional measurements are normalized by bike dimensions for cross-bike comparison:
+
+```kotlin
+// Normalize any measurement by bike size
+normalized_value = raw_distance / saddle_to_BB_distance
+
+// Example: Reach normalized by bike cockpit
+normalized_reach = body_reach / saddle_to_handlebar_reach
 ```
 
 **Interpretation:**

@@ -29,13 +29,13 @@
         <activity
             android:name=".camera.CameraPreviewActivity"
             android:exported="false"
-            android:screenOrientation="landscape"
+            android:screenOrientation="fullUser"
             android:configChanges="orientation|screenSize" />
         
         <activity
             android:name=".calibration.CalibrationActivity"
             android:exported="false"
-            android:screenOrientation="landscape"
+            android:screenOrientation="fullUser"
             android:configChanges="orientation|screenSize"
             android:label="Bike Calibration" />
         
@@ -48,7 +48,7 @@
         <activity
             android:name=".ui.VideoAnalysisActivity"
             android:exported="false"
-            android:screenOrientation="landscape"
+            android:screenOrientation="fullUser"
             android:theme="@style/Theme.BikefitApp" />
         
     </application>

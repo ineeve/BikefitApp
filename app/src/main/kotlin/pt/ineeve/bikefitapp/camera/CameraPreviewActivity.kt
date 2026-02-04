@@ -146,7 +146,7 @@ class CameraPreviewActivity : AppCompatActivity() {
     /** Launcher for CalibrationActivity result */
     private val calibrationLauncher: ActivityResultLauncher<Intent> = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
-    ) { result ->
+    ) { _ ->
         // Calibration returns via CalibrationRepository
         onCalibrationComplete()
     }
@@ -323,15 +323,13 @@ class CameraPreviewActivity : AppCompatActivity() {
      * @param timestampMs Frame timestamp in milliseconds
      * @param rotationDegrees Rotation applied to the bitmap
      */
-    private fun onFrameReceived(bitmap: Bitmap, timestampMs: Long, rotationDegrees: Int) {
+    private fun onFrameReceived(bitmap: Bitmap, timestampMs: Long, @Suppress("UNUSED_PARAMETER") rotationDegrees: Int) {
         frameCount++
         
-        // Set image source info on first frame for both overlays
-        if (frameCount == 1L) {
-            runOnUiThread {
-                poseOverlay.setImageSourceInfo(bitmap.width, bitmap.height, isFrontCamera)
-                bikeOverlay.setImageSourceInfo(bitmap.width, bitmap.height, isFrontCamera)
-            }
+        // Update image source info for all overlays
+        runOnUiThread {
+            poseOverlay.setImageSourceInfo(bitmap.width, bitmap.height, isFrontCamera)
+            bikeOverlay.setImageSourceInfo(bitmap.width, bitmap.height, isFrontCamera)
         }
         
         // Run pose detection on the frame
@@ -558,6 +556,7 @@ class CameraPreviewActivity : AppCompatActivity() {
         val leftHip = result.getLandmark(PoseLandmarkIndex.LEFT_HIP)
         val leftKnee = result.getLandmark(PoseLandmarkIndex.LEFT_KNEE)
         val leftAnkle = result.getLandmark(PoseLandmarkIndex.LEFT_ANKLE)
+        @Suppress("UNUSED_VARIABLE")
         val leftShoulder = result.getLandmark(PoseLandmarkIndex.LEFT_SHOULDER)
         
         Log.d(TAG, "Pose landmarks - " +
@@ -589,7 +588,6 @@ class CameraPreviewActivity : AppCompatActivity() {
         val ankleIndex = if (dominantSide == BodySide.LEFT) PoseLandmarkIndex.LEFT_ANKLE else PoseLandmarkIndex.RIGHT_ANKLE
         val shoulderIndex = if (dominantSide == BodySide.LEFT) PoseLandmarkIndex.LEFT_SHOULDER else PoseLandmarkIndex.RIGHT_SHOULDER
         val footIndex = if (dominantSide == BodySide.LEFT) PoseLandmarkIndex.LEFT_FOOT_INDEX else PoseLandmarkIndex.RIGHT_FOOT_INDEX
-        val heelIndex = if (dominantSide == BodySide.LEFT) PoseLandmarkIndex.LEFT_HEEL else PoseLandmarkIndex.RIGHT_HEEL
         val sideLabel = if (dominantSide == BodySide.LEFT) "L" else "R"
         
         // Calculate knee angle (Hip -> Knee -> Ankle)
@@ -662,15 +660,22 @@ class CameraPreviewActivity : AppCompatActivity() {
     }
     
     /**
-     * Detects which body side is more visible to the camera.
+     * Determines which side of the body to analyze based on bike orientation.
      * 
-     * Compares the average visibility of key landmarks on each side
-     * to determine which side the user is presenting to the camera.
+     * Uses the bike calibration to determine orientation:
+     * - If bike faces left (handlebars left of saddle), analyze LEFT body side
+     * - If bike faces right (handlebars right of saddle), analyze RIGHT body side
+     * 
+     * Falls back to visibility-based detection if calibration is unavailable.
      * 
      * @param poseResult The pose detection result
-     * @return The body side with higher average visibility
+     * @return The body side visible to camera
      */
     private fun detectDominantSide(poseResult: PoseResult): BodySide {
+        // Try to use bike orientation if calibration is complete
+        bikeCalibration?.getCameraSide()?.let { return it }
+        
+        // Fallback: visibility-based detection
         val leftIndices = listOf(
             PoseLandmarkIndex.LEFT_SHOULDER,
             PoseLandmarkIndex.LEFT_HIP,
@@ -863,6 +868,13 @@ class CameraPreviewActivity : AppCompatActivity() {
             == PackageManager.PERMISSION_GRANTED) {
             startCameraPreview()
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        @Suppress("DEPRECATION")
+        val rotation = windowManager.defaultDisplay.rotation
+        cameraManager.updateTargetRotation(rotation)
     }
 
     override fun onDestroy() {

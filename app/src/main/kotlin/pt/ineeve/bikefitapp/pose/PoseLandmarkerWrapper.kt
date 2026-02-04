@@ -110,7 +110,7 @@ class PoseLandmarkerWrapper(
         return try {
             val mpImage = BitmapImageBuilder(bitmap).build()
             val result = poseLandmarker?.detect(mpImage)
-            convertToPoseResult(result, timestampMs)
+            convertToPoseResult(result, timestampMs, bitmap.width, bitmap.height)
         } catch (e: Exception) {
             Log.e(TAG, "Error detecting pose", e)
             PoseResult.EMPTY
@@ -140,7 +140,7 @@ class PoseLandmarkerWrapper(
         return try {
             val mpImage = BitmapImageBuilder(bitmap).build()
             val result = poseLandmarker?.detectForVideo(mpImage, timestampMs)
-            convertToPoseResult(result, timestampMs)
+            convertToPoseResult(result, timestampMs, bitmap.width, bitmap.height)
         } catch (e: Exception) {
             Log.e(TAG, "Error detecting pose for video frame at $timestampMs", e)
             PoseResult.EMPTY
@@ -178,12 +178,19 @@ class PoseLandmarkerWrapper(
     /**
      * Converts MediaPipe result to our PoseResult format.
      */
-    private fun convertToPoseResult(result: PoseLandmarkerResult?, timestampMs: Long): PoseResult {
+    private fun convertToPoseResult(
+        result: PoseLandmarkerResult?, 
+        timestampMs: Long,
+        imageWidth: Int = 0,
+        imageHeight: Int = 0
+    ): PoseResult {
         if (result == null || result.landmarks().isEmpty()) {
             return PoseResult(
                 landmarks = emptyList(),
                 timestampMs = timestampMs,
-                isValid = false
+                isValid = false,
+                inputImageWidth = imageWidth,
+                inputImageHeight = imageHeight
             )
         }
 
@@ -211,7 +218,9 @@ class PoseLandmarkerWrapper(
             landmarks = landmarks,
             timestampMs = timestampMs,
             isValid = true,
-            confidence = confidence
+            confidence = confidence,
+            inputImageWidth = imageWidth,
+            inputImageHeight = imageHeight
         )
     }
 

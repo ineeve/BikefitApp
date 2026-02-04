@@ -488,7 +488,10 @@ class CycleAggregator(
             }
 
             // A. Knee Flexion/Extension at BDC
-            val kneeBdcAngles = filteredCycles.mapNotNull { it.kneeAngleAtBdc }
+            // We use the maximum knee angle observed during the cycle (Max Extension) represents the
+            // true biomechanical parameter relevant for saddle height, even if it occurs slightly
+            // off the exact BDC frame.
+            val kneeBdcAngles = filteredCycles.map { it.kneeAngle.max }
             val kneeTdcAngles = filteredCycles.mapNotNull { it.kneeAngleAtTdc }
             val kneeRanges = filteredCycles.map { it.kneeAngle.range }
             

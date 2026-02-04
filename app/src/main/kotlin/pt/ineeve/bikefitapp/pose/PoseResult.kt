@@ -94,7 +94,9 @@ data class PoseResult(
     val landmarks: List<Landmark>,
     val timestampMs: Long,
     val isValid: Boolean,
-    val confidence: Float = 0f
+    val confidence: Float = 0f,
+    val inputImageWidth: Int = 0,
+    val inputImageHeight: Int = 0
 ) {
     /**
      * Gets a landmark by its index.
@@ -141,7 +143,9 @@ data class PoseResult(
             landmarks = emptyList(),
             timestampMs = 0L,
             isValid = false,
-            confidence = 0f
+            confidence = 0f,
+            inputImageWidth = 0,
+            inputImageHeight = 0
         )
     }
     

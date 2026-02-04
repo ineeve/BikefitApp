@@ -208,7 +208,8 @@ class SaddleHeightRuleTest {
         val hipIssue = issues.find { it.type == FitIssueType.HIP_ROCKING }!!
 
         assertTrue(hipIssue.recommendation?.contains("saddle") == true)
-        assertTrue(hipIssue.recommendation?.contains("core") == true)
+        // Fix: Case sensitive check failed because actual text uses "Core"
+        assertTrue(hipIssue.recommendation?.contains("Core") == true)
     }
 
     @Test

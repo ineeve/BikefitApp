@@ -88,7 +88,9 @@ object TorsoAngleCalculator {
         return calculateTorsoAngleFromLandmarks(
             poseResult.landmarks,
             side,
-            visibilityThreshold
+            visibilityThreshold,
+            poseResult.inputImageWidth,
+            poseResult.inputImageHeight
         )
     }
 
@@ -112,7 +114,9 @@ object TorsoAngleCalculator {
         return calculateTorsoAngleFromLandmarks(
             poseFrame.landmarks,
             side,
-            visibilityThreshold
+            visibilityThreshold,
+            poseFrame.imageWidth,
+            poseFrame.imageHeight
         )
     }
 
@@ -122,12 +126,16 @@ object TorsoAngleCalculator {
      * @param landmarks List of 33 pose landmarks
      * @param side Which side to analyze (LEFT or RIGHT)
      * @param visibilityThreshold Minimum visibility for landmarks to be valid
+     * @param imageWidth Image width for aspect ratio correction (optional)
+     * @param imageHeight Image height for aspect ratio correction (optional)
      * @return TorsoAngleResult with the calculated angle or invalid result
      */
     fun calculateTorsoAngleFromLandmarks(
         landmarks: List<Landmark>,
         side: BodySide,
-        visibilityThreshold: Float = DEFAULT_VISIBILITY_THRESHOLD
+        visibilityThreshold: Float = DEFAULT_VISIBILITY_THRESHOLD,
+        imageWidth: Int = 0,
+        imageHeight: Int = 0
     ): TorsoAngleResult {
         if (landmarks.size < PoseLandmarkIndex.LANDMARK_COUNT) {
             return TorsoAngleResult.invalid(side)
@@ -160,7 +168,7 @@ object TorsoAngleCalculator {
         val confidence = (shoulder.visibility + hip.visibility) / 2f
 
         // Calculate angle using Vector2D
-        val angle = calculateAngleToGround(shoulder, hip)
+        val angle = calculateAngleToGround(shoulder, hip, imageWidth, imageHeight)
 
         return TorsoAngleResult(
             angle = angle,
@@ -213,14 +221,18 @@ object TorsoAngleCalculator {
      * 
      * @param shoulder The shoulder landmark
      * @param hip The hip landmark
+     * @param imageWidth Image width (optional, for aspect ratio correction)
+     * @param imageHeight Image height (optional, for aspect ratio correction)
      * @return The angle in degrees from horizontal (0° = horizontal, 90° = vertical)
      */
     internal fun calculateAngleToGround(
         shoulder: Landmark,
-        hip: Landmark
+        hip: Landmark,
+        imageWidth: Int = 0,
+        imageHeight: Int = 0
     ): Float {
-        val shoulderPoint = Vector2D(shoulder.x, shoulder.y)
-        val hipPoint = Vector2D(hip.x, hip.y)
+        val shoulderPoint = Vector2D.fromLandmark(shoulder, imageWidth, imageHeight)
+        val hipPoint = Vector2D.fromLandmark(hip, imageWidth, imageHeight)
 
         // Create vector from hip to shoulder (pointing up in body terms)
         val torsoVector = shoulderPoint - hipPoint

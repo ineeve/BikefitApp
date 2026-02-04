@@ -306,15 +306,15 @@ class CycleAggregatorTest {
 
     @Test
     fun `summary calculates average BDC angle across cycles`() {
-        // Create 3 cycles with different BDC angles: 28, 30, 32
-        createCycleWithAngles(bdcAngle = 28f, tdcAngle = 90f)
-        createCycleWithAngles(bdcAngle = 30f, tdcAngle = 90f)
-        createCycleWithAngles(bdcAngle = 32f, tdcAngle = 90f)
+        // Create 3 cycles with distinct BDC (Max Extension) angles
+        createCycleWithAngles(bdcAngle = 138f, tdcAngle = 70f)
+        createCycleWithAngles(bdcAngle = 140f, tdcAngle = 70f)
+        createCycleWithAngles(bdcAngle = 142f, tdcAngle = 70f)
 
         val summary = aggregator.getSummary()
 
         assertEquals(3, summary.cycleCount)
-        assertEquals(30f, summary.averageKneeAngleAtBdc!!, 0.001f)
+        assertEquals(140f, summary.averageKneeAngleAtBdc!!, 0.001f)
     }
 
     @Test
@@ -363,15 +363,15 @@ class CycleAggregatorTest {
 
     @Test
     fun `summary has BDC stats with min max avg`() {
-        createCycleWithAngles(bdcAngle = 25f, tdcAngle = 90f)
-        createCycleWithAngles(bdcAngle = 30f, tdcAngle = 90f)
-        createCycleWithAngles(bdcAngle = 35f, tdcAngle = 90f)
+        createCycleWithAngles(bdcAngle = 135f, tdcAngle = 70f)
+        createCycleWithAngles(bdcAngle = 140f, tdcAngle = 70f)
+        createCycleWithAngles(bdcAngle = 145f, tdcAngle = 70f)
 
         val summary = aggregator.getSummary()
 
-        assertEquals(25f, summary.kneeAngleAtBdcStats.min, 0.001f)
-        assertEquals(35f, summary.kneeAngleAtBdcStats.max, 0.001f)
-        assertEquals(30f, summary.kneeAngleAtBdcStats.average, 0.001f)
+        assertEquals(135f, summary.kneeAngleAtBdcStats.min, 0.001f)
+        assertEquals(145f, summary.kneeAngleAtBdcStats.max, 0.001f)
+        assertEquals(140f, summary.kneeAngleAtBdcStats.average, 0.001f)
     }
 
     // ==================== GetLastCycle Tests ====================
@@ -493,15 +493,20 @@ class CycleAggregatorTest {
     private fun createCycleWithAngles(bdcAngle: Float, tdcAngle: Float) {
         if (aggregator.getCycleCount() == 0 && testFrameCounter == 0L) {
             // Initialize first BDC
+            // BDC is Max Extension
             aggregator.endCycleAtBdc(testFrameCounter, testTimeCounter, bdcAngle)
             testFrameCounter++
             testTimeCounter += 33
         }
 
-        // Add measurements with varying knee angles to meet minimum ROM requirement (40 degrees)
-        // Start at 30 degrees and increase to 90 degrees (range = 60 degrees)
-        for (i in 0..15) {
-            val kneeAngle = 30f + (i * 4f) // 30, 34, 38, ... 90
+        // Simulate cycle from BDC (Max) down to TDC (Min) and back to BDC
+        val steps = 15
+        val range = bdcAngle - tdcAngle
+        
+        // Downstroke (Extension -> Flexion)
+        for (i in 0..steps) {
+            val progress = i.toFloat() / steps
+            val kneeAngle = bdcAngle - (range * progress)
             aggregator.addMeasurement(
                 testFrameCounter,
                 testTimeCounter,
@@ -515,9 +520,10 @@ class CycleAggregatorTest {
 
         aggregator.recordTdc(tdcAngle)
 
-        for (i in 0..14) {
-            // Decreasing back from 90 to 30
-            val kneeAngle = 90f - (i * 4f) // 90, 86, 82, ... 30
+        // Upstroke (Flexion -> Extension)
+        for (i in 0..steps) {
+            val progress = i.toFloat() / steps
+            val kneeAngle = tdcAngle + (range * progress)
             aggregator.addMeasurement(
                 testFrameCounter,
                 testTimeCounter,
@@ -576,7 +582,7 @@ class CycleAggregatorTest {
             endFrameNumber = (cycleNumber + 1) * 30L,
             startTimestampMs = cycleNumber * 1000L,
             endTimestampMs = (cycleNumber + 1) * 1000L,
-            kneeAngle = AngleStats(min = bdcAngle, max = tdcAngle, average = (bdcAngle + tdcAngle) / 2, sampleCount = 30),
+            kneeAngle = AngleStats(min = tdcAngle, max = bdcAngle, average = (bdcAngle + tdcAngle) / 2, sampleCount = 30),
             hipAngle = AngleStats(min = 65f, max = 75f, average = 70f, sampleCount = 30),
             torsoAngle = AngleStats(min = 40f, max = 50f, average = 45f, sampleCount = 30),
             ankleAngle = AngleStats.INVALID,
@@ -745,12 +751,12 @@ class CycleAggregatorTest {
             endFrameNumber = (cycleNumber + 1) * 30L,
             startTimestampMs = cycleNumber * durationMs,
             endTimestampMs = (cycleNumber + 1) * durationMs,
-            kneeAngle = AngleStats(min = 30f, max = 90f, average = 60f, sampleCount = 30),
+            kneeAngle = AngleStats(min = 70f, max = 140f, average = 105f, sampleCount = 30),
             hipAngle = AngleStats(min = 65f, max = 75f, average = 70f, sampleCount = 30),
             torsoAngle = AngleStats(min = 40f, max = 50f, average = 45f, sampleCount = 30),
             ankleAngle = AngleStats.INVALID,
-            kneeAngleAtBdc = 30f,
-            kneeAngleAtTdc = 90f,
+            kneeAngleAtBdc = 140f,
+            kneeAngleAtTdc = 70f,
             hipAngleAtTdc = null,
             ankleAngleAtBdc = null,
             kopsNormalized = null,
