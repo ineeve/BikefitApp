@@ -31,12 +31,14 @@ class CalibrationActivity : AppCompatActivity() {
     private lateinit var cameraManager: CameraManager
     private lateinit var previewView: PreviewView
     private lateinit var overlayView: CalibrationOverlayView
+    private lateinit var magnifiedPreviewView: MagnifiedPreviewView
     private lateinit var instructionText: TextView
     private lateinit var confirmButton: Button
     private lateinit var resetButton: Button
 
     private var calibration: BikeCalibration = BikeCalibration.EMPTY
     private var state: CalibrationState = CalibrationState.WaitingForSaddle
+    private var isDragging = false
 
     companion object {
         private const val TAG = "CalibrationActivity"
@@ -72,6 +74,7 @@ class CalibrationActivity : AppCompatActivity() {
     private fun initializeViews() {
         previewView = findViewById(R.id.preview_view)
         overlayView = findViewById(R.id.calibration_overlay)
+        magnifiedPreviewView = findViewById(R.id.magnified_preview)
         instructionText = findViewById(R.id.instruction_text)
         confirmButton = findViewById(R.id.confirm_button)
         resetButton = findViewById(R.id.reset_button)
@@ -90,7 +93,25 @@ class CalibrationActivity : AppCompatActivity() {
         }
         
         overlayView.onPointAdjustedListener = { pointType, normalizedX, normalizedY ->
+            // Show magnified view when dragging starts
+            if (!isDragging) {
+                isDragging = true
+                magnifiedPreviewView.show()
+            }
+            
+            // Update magnified view position to follow the point
+            magnifiedPreviewView.setMagnificationPoint(normalizedX, normalizedY)
+            
+            // Update the calibration with the new position
             onPointAdjusted(pointType, normalizedX, normalizedY)
+        }
+        
+        overlayView.onDragEndedListener = {
+            // Hide magnified view when dragging ends
+            if (isDragging) {
+                isDragging = false
+                magnifiedPreviewView.hide()
+            }
         }
 
         confirmButton.setOnClickListener {
@@ -126,11 +147,18 @@ class CalibrationActivity : AppCompatActivity() {
     }
 
     private fun startCameraPreview() {
-        // Start camera without frame analysis for calibration
+        // Start camera with frame analysis for magnified preview
+        val frameAnalysisCallback = object : pt.ineeve.bikefitapp.camera.FrameAnalysisCallback {
+            override fun onFrameAvailable(bitmap: android.graphics.Bitmap, timestampMs: Long, rotationDegrees: Int) {
+                // Update magnified view with latest frame
+                magnifiedPreviewView.setBitmap(bitmap)
+            }
+        }
+        
         cameraManager.startCamera(
             lifecycleOwner = this,
             previewView = previewView,
-            frameAnalysisCallback = null,  // No frame processing needed
+            frameAnalysisCallback = frameAnalysisCallback,
             onError = { exception ->
                 Toast.makeText(
                     this,

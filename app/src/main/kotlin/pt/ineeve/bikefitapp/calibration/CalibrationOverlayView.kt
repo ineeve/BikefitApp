@@ -37,6 +37,9 @@ class CalibrationOverlayView @JvmOverloads constructor(
     
     /** Listener for point adjustment (existing point moved) */
     var onPointAdjustedListener: ((BikeReferencePointType, Float, Float) -> Unit)? = null
+    
+    /** Listener for when dragging ends */
+    var onDragEndedListener: (() -> Unit)? = null
 
     /** Current calibration data to display */
     private var calibration: BikeCalibration = BikeCalibration.EMPTY
@@ -175,6 +178,7 @@ class CalibrationOverlayView @JvmOverloads constructor(
                     // Finish dragging
                     selectedPoint = null
                     isDragging = false
+                    onDragEndedListener?.invoke()
                     invalidate()
                     return true
                 }

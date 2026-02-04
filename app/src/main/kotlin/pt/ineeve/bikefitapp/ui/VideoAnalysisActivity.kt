@@ -44,6 +44,7 @@ class VideoAnalysisActivity : AppCompatActivity() {
     private lateinit var calibrationOverlay: CalibrationOverlayView
     private lateinit var poseOverlay: PoseOverlayView
     private lateinit var cycleMetricsOverlay: CycleMetricsOverlayView
+    private lateinit var magnifiedPreviewView: MagnifiedPreviewView
     private lateinit var actionButton: MaterialButton
     private lateinit var progressContainer: LinearLayout
     private lateinit var progressBar: ProgressBar
@@ -62,6 +63,8 @@ class VideoAnalysisActivity : AppCompatActivity() {
     // Calibration
     private var currentCalibration = BikeCalibration.EMPTY
     private var calibrationState: CalibrationState = CalibrationState.WaitingForSaddle
+    private var isDragging = false
+    private var currentVideoFrameBitmap: Bitmap? = null
 
     // Analysis
     private val pedalDetector = PedalCycleDetector()
@@ -88,6 +91,7 @@ class VideoAnalysisActivity : AppCompatActivity() {
         poseOverlay = findViewById(R.id.pose_overlay)
         poseOverlay.scaleType = ViewCoordinateMapper.ScaleType.FIT_CENTER
         cycleMetricsOverlay = findViewById(R.id.cycle_metrics_overlay)
+        magnifiedPreviewView = findViewById(R.id.magnified_preview)
         
         actionButton = findViewById(R.id.action_button)
         progressContainer = findViewById(R.id.progress_container)
@@ -143,7 +147,24 @@ class VideoAnalysisActivity : AppCompatActivity() {
         }
         
         calibrationOverlay.onPointAdjustedListener = { type, x, y ->
+            // Show magnified view when dragging starts
+            if (!isDragging) {
+                isDragging = true
+                magnifiedPreviewView.show()
+            }
+            
+            // Update magnified view position to follow the point
+            magnifiedPreviewView.setMagnificationPoint(x, y)
+            
             handleCalibrationAdjustment(type, x, y)
+        }
+        
+        calibrationOverlay.onDragEndedListener = {
+            // Hide magnified view when dragging ends
+            if (isDragging) {
+                isDragging = false
+                magnifiedPreviewView.hide()
+            }
         }
 
         actionButton.setOnClickListener {
@@ -168,6 +189,8 @@ class VideoAnalysisActivity : AppCompatActivity() {
                 if (frame != null) {
                     withContext(Dispatchers.Main) {
                         videoFrameView.setImageBitmap(frame)
+                        currentVideoFrameBitmap = frame
+                        magnifiedPreviewView.setBitmap(frame)
                         calibrationOverlay.setImageSourceInfo(frame.width, frame.height)
                         poseOverlay.setImageSourceInfo(frame.width, frame.height)
                     }

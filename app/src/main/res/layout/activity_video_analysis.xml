@@ -34,6 +34,15 @@
         app:layout_constraintStart_toStartOf="@id/video_frame_view"
         app:layout_constraintEnd_toEndOf="@id/video_frame_view" />
 
+    <pt.ineeve.bikefitapp.calibration.MagnifiedPreviewView
+        android:id="@+id/magnified_preview"
+        android:layout_width="0dp"
+        android:layout_height="200dp"
+        android:visibility="gone"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent" />
+
     <pt.ineeve.bikefitapp.ui.CycleMetricsOverlayView
         android:id="@+id/cycle_metrics_overlay"
         android:layout_width="0dp"
