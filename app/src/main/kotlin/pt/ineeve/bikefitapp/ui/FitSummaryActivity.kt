@@ -373,7 +373,7 @@ class FitSummaryActivity : AppCompatActivity() {
         
         for ((index, pair) in allKeyFrames.withIndex()) {
             val (frame, angles) = pair
-            android.util.Log.d("FitSummaryActivity", "displayKeyFrames: Creating display view for frame ${frame.frameNumber} (index $index)")
+            android.util.Log.d("FitSummaryActivity", "displayKeyFrames: Creating display view for frame ${frame.frameNumber} (index $index), bitmap=${frame.bitmap}")
             val displayView = KeyFrameDisplayView(this)
             displayView.setKeyFrame(frame, angles)
             
@@ -384,14 +384,14 @@ class FitSummaryActivity : AppCompatActivity() {
             
             val params = android.widget.LinearLayout.LayoutParams(
                 dpToPx(frameWidthDp),
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                dpToPx(400)  // Set explicit height to ensure visibility
             )
             params.marginEnd = dpToPx(12)
             params.bottomMargin = dpToPx(12)
             
             displayView.layoutParams = params
             keyFramesContainer.addView(displayView)
-            android.util.Log.d("FitSummaryActivity", "displayKeyFrames: Added view for frame ${frame.frameNumber}")
+            android.util.Log.d("FitSummaryActivity", "displayKeyFrames: Added view for frame ${frame.frameNumber}, layoutParams: width=${params.width}, height=${params.height}")
         }
         
         android.util.Log.d("FitSummaryActivity", "displayKeyFrames: Completed, added ${allKeyFrames.size} frame views")

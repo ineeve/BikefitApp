@@ -185,25 +185,32 @@ class KeyFrameDisplayView @JvmOverloads constructor(
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val width = MeasureSpec.getSize(widthMeasureSpec)
+        val heightMode = MeasureSpec.getMode(heightMeasureSpec)
         val maxHeight = MeasureSpec.getSize(heightMeasureSpec)
+        
+        android.util.Log.d("KeyFrameDisplayView", "onMeasure: width=$width, maxHeight=$maxHeight, heightMode=$heightMode, bitmap=${frameBitmap?.width}x${frameBitmap?.height}")
+        
+        // If height is explicitly set (not UNSPECIFIED), use it
+        if (heightMode == MeasureSpec.EXACTLY) {
+            setMeasuredDimension(width, maxHeight)
+            return
+        }
         
         // Determine aspect ratio from the bitmap if available
         val bitmap = frameBitmap
         if (bitmap != null) {
             val bitmapAspect = bitmap.width.toFloat() / bitmap.height
-            val viewAspect = width.toFloat() / maxHeight
-            
-            val finalHeight = if (bitmapAspect > viewAspect) {
-                // Bitmap is wider, fit to width
-                (width / bitmapAspect).toInt()
-            } else {
-                // Bitmap is taller (portrait), fit to height
-                maxHeight.coerceAtMost((width / bitmapAspect).toInt())
+            val calculatedHeight = (width / bitmapAspect).toInt()
+            val finalHeight = when (heightMode) {
+                MeasureSpec.AT_MOST -> calculatedHeight.coerceAtMost(maxHeight)
+                else -> calculatedHeight
             }
+            android.util.Log.d("KeyFrameDisplayView", "onMeasure: calculated height=$calculatedHeight, final=$finalHeight")
             setMeasuredDimension(width, finalHeight)
         } else {
             // Default 16:9 if no bitmap
             val height = (width * 9 / 16f).toInt()
+            android.util.Log.d("KeyFrameDisplayView", "onMeasure: no bitmap, using default 16:9 height=$height")
             setMeasuredDimension(width, height)
         }
     }

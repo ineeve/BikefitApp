@@ -78,6 +78,14 @@ class VideoAnalysisActivity : AppCompatActivity() {
     // Track captured frames to prevent duplicates
     private val capturedFrameNumbers = mutableSetOf<String>()
     
+    // Track best frames by confidence (frameNum, confidence) to choose highest confidence
+    private var leftTdcBest: Pair<Long, Float>? = null
+    private var rightTdcBest: Pair<Long, Float>? = null
+    private var leftBdcBest: Pair<Long, Float>? = null
+    private var rightBdcBest: Pair<Long, Float>? = null
+    private var leftThreeOClockBest: Pair<Long, Float>? = null
+    private var rightThreeOClockBest: Pair<Long, Float>? = null
+    
     // Video info
     private var videoDurationMs = 0L
 
@@ -619,22 +627,33 @@ class VideoAnalysisActivity : AppCompatActivity() {
         // Check for 3 O'Clock position (pedal at horizontal)
         Log.d(TAG, "processSideMetrics: Checking 3 O'Clock detection for frame $frameNumber, side $side, poseFrame valid: ${poseFrame.isValid}, landmarks: ${poseFrame.landmarks.size}")
         val threeOClockEvent = ThreeOClockDetector.detectAtFrame(poseFrame, side)
-        Log.d(TAG, "processSideMetrics: 3 O'Clock detection result: $threeOClockEvent, already captured: ${keyFrameMap.containsKey(CriticalPedalPosition.THREE_O_CLOCK)}")
+        Log.d(TAG, "processSideMetrics: 3 O'Clock detection result: $threeOClockEvent, frameNumber=$frameNumber, confidence=${threeOClockEvent?.confidence}")
         
-        if (threeOClockEvent != null && !keyFrameMap.containsKey(CriticalPedalPosition.THREE_O_CLOCK)) {
-            val frameKey = "${sidePrefix}_3OCLOCK_${frameNumber}"
-            if (!capturedFrameNumbers.contains(frameKey)) {
-                Log.d(TAG, "processSideMetrics: Capturing 3 O'Clock frame at $frameNumber, storing frameNumber=$frameNumber")
+        if (threeOClockEvent != null) {
+            // Track best 3 O'Clock by confidence (capture frame with HIGHEST confidence, not first)
+            val bestTracker = if (side == BodySide.LEFT) leftThreeOClockBest else rightThreeOClockBest
+            
+            // Compare confidence with current best (if any)
+            if (bestTracker == null || threeOClockEvent.confidence > bestTracker.second) {
+                Log.d(TAG, "processSideMetrics: Found better 3 O'Clock at frame $frameNumber (confidence=${threeOClockEvent.confidence}${if (bestTracker != null) ", was ${bestTracker.second} at frame ${bestTracker.first}" else ", first detection"})")
+                
+                // Update tracker and capture frame
+                if (side == BodySide.LEFT) {
+                    leftThreeOClockBest = Pair(frameNumber, threeOClockEvent.confidence)
+                } else {
+                    rightThreeOClockBest = Pair(frameNumber, threeOClockEvent.confidence)
+                }
+                
+                // Clear previous 3 O'Clock frame from keyFrameMap to allow update
+                keyFrameMap.remove(CriticalPedalPosition.THREE_O_CLOCK)
+                
+                // Capture new best 3 O'Clock frame
                 val bitmap = currentVideoFrameBitmap?.let {
-                    // Create a completely independent copy
                     val copy = it.copy(it.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
                     copy
                 }
-                Log.d(TAG, "processSideMetrics: Before storing 3 O'Clock - frameNumber=$frameNumber, bitmap!=null=${bitmap != null}")
                 keyFrameMap[CriticalPedalPosition.THREE_O_CLOCK] = Triple(frameNumber, bitmap, poseFrame.copy())
-                capturedFrameNumbers.add(frameKey)
-                Log.d(TAG, "processSideMetrics: After storing 3 O'Clock - keyFrameMap[THREE_O_CLOCK]?.first=${keyFrameMap[CriticalPedalPosition.THREE_O_CLOCK]?.first}")
-                Log.d(TAG, "Captured 3 O'Clock frame at frame $frameNumber, side $side, bitmap: ${bitmap != null}")
+                Log.d(TAG, "processSideMetrics: Updated 3 O'Clock frame - frameNumber=$frameNumber, confidence=${threeOClockEvent.confidence}, bitmap!=null=${bitmap != null}")
             }
         }
         
@@ -649,18 +668,21 @@ class VideoAnalysisActivity : AppCompatActivity() {
         
         for (event in events) {
             if (event.type == PedalExtremum.BDC) {
-                // Capture BDC frame if not already captured
-                if (!keyFrameMap.containsKey(CriticalPedalPosition.BDC)) {
-                    val frameKey = "${sidePrefix}_BDC_${frameNumber}"
-                    if (!capturedFrameNumbers.contains(frameKey)) {
-                        val bitmap = currentVideoFrameBitmap?.let {
-                            // Create a completely independent copy
-                            it.copy(it.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
-                        }
-                        keyFrameMap[CriticalPedalPosition.BDC] = Triple(frameNumber, bitmap, poseFrame.copy())
-                        capturedFrameNumbers.add(frameKey)
-                        Log.d(TAG, "Captured BDC frame at frame $frameNumber, side $side, bitmap: ${bitmap != null}")
+                // Capture BDC frame with best confidence
+                val bestTracker = if (side == BodySide.LEFT) leftBdcBest else rightBdcBest
+                if (bestTracker == null || event.confidence > bestTracker.second) {
+                    Log.d(TAG, "Found better BDC at frame $frameNumber (confidence=${event.confidence}${if (bestTracker != null) ", was ${bestTracker.second} at frame ${bestTracker.first}" else ", first detection"})")
+                    if (side == BodySide.LEFT) {
+                        leftBdcBest = Pair(frameNumber, event.confidence)
+                    } else {
+                        rightBdcBest = Pair(frameNumber, event.confidence)
                     }
+                    val bitmap = currentVideoFrameBitmap?.let {
+                        // Create a completely independent copy
+                        it.copy(it.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
+                    }
+                    keyFrameMap[CriticalPedalPosition.BDC] = Triple(frameNumber, bitmap, poseFrame.copy())
+                    Log.d(TAG, "Updated BDC frame - frameNumber=$frameNumber, confidence=${event.confidence}, bitmap!=null=${bitmap != null}")
                 }
                 
                 val angleAtBdc = kneeAngle ?: 0f 
@@ -681,18 +703,21 @@ class VideoAnalysisActivity : AppCompatActivity() {
                     }
                 }
             } else if (event.type == PedalExtremum.TDC) {
-                // Capture TDC frame if not already captured
-                if (!keyFrameMap.containsKey(CriticalPedalPosition.TDC)) {
-                    val frameKey = "${sidePrefix}_TDC_${frameNumber}"
-                    if (!capturedFrameNumbers.contains(frameKey)) {
-                        val bitmap = currentVideoFrameBitmap?.let {
-                            // Create a completely independent copy
-                            it.copy(it.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
-                        }
-                        keyFrameMap[CriticalPedalPosition.TDC] = Triple(frameNumber, bitmap, poseFrame.copy())
-                        capturedFrameNumbers.add(frameKey)
-                        Log.d(TAG, "Captured TDC frame at frame $frameNumber, side $side, bitmap: ${bitmap != null}")
+                // Capture TDC frame with best confidence
+                val bestTracker = if (side == BodySide.LEFT) leftTdcBest else rightTdcBest
+                if (bestTracker == null || event.confidence > bestTracker.second) {
+                    Log.d(TAG, "Found better TDC at frame $frameNumber (confidence=${event.confidence}${if (bestTracker != null) ", was ${bestTracker.second} at frame ${bestTracker.first}" else ", first detection"})")
+                    if (side == BodySide.LEFT) {
+                        leftTdcBest = Pair(frameNumber, event.confidence)
+                    } else {
+                        rightTdcBest = Pair(frameNumber, event.confidence)
                     }
+                    val bitmap = currentVideoFrameBitmap?.let {
+                        // Create a completely independent copy
+                        it.copy(it.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
+                    }
+                    keyFrameMap[CriticalPedalPosition.TDC] = Triple(frameNumber, bitmap, poseFrame.copy())
+                    Log.d(TAG, "Updated TDC frame - frameNumber=$frameNumber, confidence=${event.confidence}, bitmap!=null=${bitmap != null}")
                 }
                 
                 // Record TDC for the aggregator (including hip angle at TDC)
