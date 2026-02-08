@@ -11,7 +11,13 @@ The `pose` module encapsulates the MediaPipe Vision Tasks API. It takes raw imag
 - Runs inference on provided images.
 
 ### `LandmarkSmoother`
-- Raw ML output can be jittery. This component applies smoothing algorithms (e.g., exponential smoothing or OneEuroFilter) to stabilize landmark coordinates over time.
+- Raw ML output can be jittery. This component applies exponential moving average (EMA) smoothing to stabilize landmark coordinates over time.
+
+### `OneEuroFilter` & `OneEuroLandmarkSmoother`
+- Advanced adaptive smoothing based on Casiez et al. 2012.
+- Automatically adjusts smoothing strength based on movement velocity.
+- Applied to key bike fit landmarks: hip, knee, ankle, and toe.
+- Reduces jitter during slow movements while maintaining responsiveness during fast movements.
 
 ### `PoseValidator`
 - Checks if necessary landmarks (e.g., hip, knee, ankle, foot) are visible in the frame.
