@@ -780,37 +780,42 @@ class VideoAnalysisActivity : AppCompatActivity() {
         val keyFrameMap = if (side == BodySide.LEFT) leftKeyFrameSet else rightKeyFrameSet
         val sidePrefix = if (side == BodySide.LEFT) "L" else "R"
         
-        // Collect 3 O'Clock frames using CrankAngleTracker (frames near 90° with high confidence)
+        // Collect 3 O'Clock frames using CrankPositionDetector (frames at 90° with high confidence)
         if (threeOClockFramesList.size < 8 && !crankScaleCache.isValid) {
-            val near90 = crankAngleTracker.getMeasurementsNear(
-                targetAngle = 90f,
-                toleranceDegrees = 5f,
-                minConfidence = 0.6f,
-                side = side
-            )
+            val latestMeasurement = crankAngleTracker.getCurrentMeasurement(side)
             
-            if (near90.isNotEmpty()) {
-                // Add the latest high-confidence measurement near 3 O'Clock
-                val measurement = near90.last()
-                threeOClockFramesList.add(poseFrame)
-                Log.d(TAG, "processSideMetrics: Added frame to 3 O'Clock collection for side $side. Count: ${threeOClockFramesList.size}/8, angle=${measurement.filteredAngle}°, confidence=${measurement.confidence}")
+            if (latestMeasurement != null) {
+                // Detect if current crank angle is at 3 O'Clock position
+                val threeOClockEvent = CrankPositionDetector.detectPosition(
+                    crankAngle = latestMeasurement.filteredAngle,
+                    frameNumber = frameNumber,
+                    timestampMs = poseFrame.timestampMs,
+                    side = side
+                )
                 
-                // Track best 3 O'Clock by confidence
-                val bestTracker = if (side == BodySide.LEFT) leftThreeOClockBest else rightThreeOClockBest
-                if (bestTracker == null || measurement.confidence > bestTracker.second) {
-                    Log.d(TAG, "processSideMetrics: Found better 3 O'Clock at frame $frameNumber (confidence=${measurement.confidence}${if (bestTracker != null) ", was ${bestTracker.second} at frame ${bestTracker.first}" else ", first detection"})")
+                if (threeOClockEvent?.position == CrankPosition.THREE_O_CLOCK && 
+                    latestMeasurement.confidence >= 0.6f) {
+                    // Add frame to 3 O'Clock collection
+                    threeOClockFramesList.add(poseFrame)
+                    Log.d(TAG, "processSideMetrics: Added frame to 3 O'Clock collection for side $side. Count: ${threeOClockFramesList.size}/8, angle=${latestMeasurement.filteredAngle}°, confidence=${latestMeasurement.confidence}")
                     
-                    if (side == BodySide.LEFT) {
-                        leftThreeOClockBest = Pair(frameNumber, measurement.confidence)
-                    } else {
-                        rightThreeOClockBest = Pair(frameNumber, measurement.confidence)
+                    // Track best 3 O'Clock by confidence
+                    val bestTracker = if (side == BodySide.LEFT) leftThreeOClockBest else rightThreeOClockBest
+                    if (bestTracker == null || threeOClockEvent.confidence > bestTracker.second) {
+                        Log.d(TAG, "processSideMetrics: Found better 3 O'Clock at frame $frameNumber (confidence=${threeOClockEvent.confidence}${if (bestTracker != null) ", was ${bestTracker.second} at frame ${bestTracker.first}" else ", first detection"})")
+                        
+                        if (side == BodySide.LEFT) {
+                            leftThreeOClockBest = Pair(frameNumber, threeOClockEvent.confidence)
+                        } else {
+                            rightThreeOClockBest = Pair(frameNumber, threeOClockEvent.confidence)
+                        }
+                        
+                        // Capture best 3 O'Clock frame
+                        keyFrameMap.remove(CriticalPedalPosition.THREE_O_CLOCK)
+                        val bitmap = currentFrameBitmap.copy(currentFrameBitmap.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
+                        keyFrameMap[CriticalPedalPosition.THREE_O_CLOCK] = Triple(frameNumber, bitmap, poseFrame.copy())
+                        Log.d(TAG, "processSideMetrics: Updated 3 O'Clock frame - frameNumber=$frameNumber, confidence=${threeOClockEvent.confidence}, bitmap!=null=${bitmap != null}")
                     }
-                    
-                    // Capture best 3 O'Clock frame
-                    keyFrameMap.remove(CriticalPedalPosition.THREE_O_CLOCK)
-                    val bitmap = currentFrameBitmap.copy(currentFrameBitmap.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
-                    keyFrameMap[CriticalPedalPosition.THREE_O_CLOCK] = Triple(frameNumber, bitmap, poseFrame.copy())
-                    Log.d(TAG, "processSideMetrics: Updated 3 O'Clock frame - frameNumber=$frameNumber, confidence=${measurement.confidence}, bitmap!=null=${bitmap != null}")
                 }
             }
             
@@ -827,21 +832,59 @@ class VideoAnalysisActivity : AppCompatActivity() {
             }
         }
         
-        val events = pedalDetector.processAnklePosition(
-            frameNumber = frameNumber,
-            timestampMs = timestampMs,
-            ankleY = ankle.y,
-            visibility = ankle.visibility,
-            side = side
-        )
-        Log.d(TAG, "processSideMetrics: Pedal events at frame $frameNumber, side $side: ${events.map { it.type }}, ankleY: ${ankle.y}, visibility: ${ankle.visibility}")
-        
-        for (event in events) {
-            if (event.type == PedalExtremum.BDC) {
-                // Seed the elliptical model from BDC/TDC spacing
+        // Use unified CrankPositionDetector for TDC/BDC detection
+        val latestMeasurement = crankAngleTracker.getCurrentMeasurement(side)
+        if (latestMeasurement != null && latestMeasurement.confidence >= 0.5f) {
+            // Detect both TDC and BDC positions using crank angle
+            val tdcEvent = CrankPositionDetector.detectPosition(
+                crankAngle = latestMeasurement.filteredAngle,
+                frameNumber = frameNumber,
+                timestampMs = timestampMs,
+                side = side
+            )
+            
+            val bdcEvent = CrankPositionDetector.detectPosition(
+                crankAngle = latestMeasurement.filteredAngle,
+                frameNumber = frameNumber,
+                timestampMs = timestampMs,
+                side = side
+            )
+            
+            Log.d(TAG, "processSideMetrics: Pedal positions at frame $frameNumber, side $side: TDC=${tdcEvent?.position}, BDC=${bdcEvent?.position}, angle=${latestMeasurement.filteredAngle}°, confidence=${latestMeasurement.confidence}")
+            
+            if (tdcEvent?.position == CrankPosition.TDC) {
+                // Seed the elliptical model from BDC→TDC spacing
+                val lastBdcFrame = if (side == BodySide.LEFT) leftBdcBest?.first else rightBdcBest?.first
+                if (lastBdcFrame != null && frameNumber > lastBdcFrame) {
+                    val halfCycleFrames = (frameNumber - lastBdcFrame).toInt()
+                    if (halfCycleFrames in 3..60) {
+                        crankAngleTracker.seedFromHalfCycle(halfCycleFrames, side)
+                        Log.d(TAG, "processSideMetrics: Seeded elliptical model from BDC→TDC: $halfCycleFrames frames, side $side")
+                    }
+                }
+                // Capture TDC frame with best confidence
+                val bestTracker = if (side == BodySide.LEFT) leftTdcBest else rightTdcBest
+                if (bestTracker == null || tdcEvent.confidence > bestTracker.second) {
+                    Log.d(TAG, "Found better TDC at frame $frameNumber (confidence=${tdcEvent.confidence}${if (bestTracker != null) ", was ${bestTracker.second} at frame ${bestTracker.first}" else ", first detection"})")
+                    if (side == BodySide.LEFT) {
+                        leftTdcBest = Pair(frameNumber, tdcEvent.confidence)
+                    } else {
+                        rightTdcBest = Pair(frameNumber, tdcEvent.confidence)
+                    }
+                    val bitmap = currentFrameBitmap.copy(currentFrameBitmap.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
+                    keyFrameMap[CriticalPedalPosition.TDC] = Triple(frameNumber, bitmap, poseFrame.copy())
+                    Log.d(TAG, "Updated TDC frame - frameNumber=$frameNumber, confidence=${tdcEvent.confidence}, bitmap!=null=${bitmap != null}")
+                }
+                
+                // Record TDC for the aggregator (including hip angle at TDC)
+                aggregator.recordTdc(kneeAngle, hipAngle)
+            }
+            
+            if (bdcEvent?.position == CrankPosition.BDC) {
+                // Seed the elliptical model from TDC→BDC spacing
                 val lastTdcFrame = if (side == BodySide.LEFT) leftTdcBest?.first else rightTdcBest?.first
-                if (lastTdcFrame != null && event.frameNumber > lastTdcFrame) {
-                    val halfCycleFrames = (event.frameNumber - lastTdcFrame).toInt()
+                if (lastTdcFrame != null && frameNumber > lastTdcFrame) {
+                    val halfCycleFrames = (frameNumber - lastTdcFrame).toInt()
                     if (halfCycleFrames in 3..60) {
                         crankAngleTracker.seedFromHalfCycle(halfCycleFrames, side)
                         Log.d(TAG, "processSideMetrics: Seeded elliptical model from TDC→BDC: $halfCycleFrames frames, side $side")
@@ -849,20 +892,20 @@ class VideoAnalysisActivity : AppCompatActivity() {
                 }
                 // Capture BDC frame with best confidence
                 val bestTracker = if (side == BodySide.LEFT) leftBdcBest else rightBdcBest
-                if (bestTracker == null || event.confidence > bestTracker.second) {
-                    Log.d(TAG, "Found better BDC at frame $frameNumber (confidence=${event.confidence}${if (bestTracker != null) ", was ${bestTracker.second} at frame ${bestTracker.first}" else ", first detection"})")
+                if (bestTracker == null || bdcEvent.confidence > bestTracker.second) {
+                    Log.d(TAG, "Found better BDC at frame $frameNumber (confidence=${bdcEvent.confidence}${if (bestTracker != null) ", was ${bestTracker.second} at frame ${bestTracker.first}" else ", first detection"})")
                     if (side == BodySide.LEFT) {
-                        leftBdcBest = Pair(frameNumber, event.confidence)
+                        leftBdcBest = Pair(frameNumber, bdcEvent.confidence)
                     } else {
-                        rightBdcBest = Pair(frameNumber, event.confidence)
+                        rightBdcBest = Pair(frameNumber, bdcEvent.confidence)
                     }
                     val bitmap = currentFrameBitmap.copy(currentFrameBitmap.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
                     keyFrameMap[CriticalPedalPosition.BDC] = Triple(frameNumber, bitmap, poseFrame.copy())
-                    Log.d(TAG, "Updated BDC frame - frameNumber=$frameNumber, confidence=${event.confidence}, bitmap!=null=${bitmap != null}")
+                    Log.d(TAG, "Updated BDC frame - frameNumber=$frameNumber, confidence=${bdcEvent.confidence}, bitmap!=null=${bitmap != null}")
                 }
                 
                 val angleAtBdc = kneeAngle ?: 0f 
-                val cycleMetrics = aggregator.endCycleAtBdc(event.frameNumber, event.timestampMs, angleAtBdc, ankleAngle)
+                val cycleMetrics = aggregator.endCycleAtBdc(frameNumber, timestampMs, angleAtBdc, ankleAngle)
                 
                 // Update overlay with latest cycle metrics
                 if (cycleMetrics != null) {
@@ -878,32 +921,45 @@ class VideoAnalysisActivity : AppCompatActivity() {
                         )
                     }
                 }
-            } else if (event.type == PedalExtremum.TDC) {
-                // Seed the elliptical model from BDC→TDC spacing
-                val lastBdcFrame = if (side == BodySide.LEFT) leftBdcBest?.first else rightBdcBest?.first
-                if (lastBdcFrame != null && event.frameNumber > lastBdcFrame) {
-                    val halfCycleFrames = (event.frameNumber - lastBdcFrame).toInt()
-                    if (halfCycleFrames in 3..60) {
-                        crankAngleTracker.seedFromHalfCycle(halfCycleFrames, side)
-                        Log.d(TAG, "processSideMetrics: Seeded elliptical model from BDC→TDC: $halfCycleFrames frames, side $side")
+            }
+        } else {
+            // Fallback to ankle Y extrema detection if crank angle unavailable
+            val events = pedalDetector.processAnklePosition(
+                frameNumber = frameNumber,
+                timestampMs = timestampMs,
+                ankleY = ankle.y,
+                visibility = ankle.visibility,
+                side = side
+            )
+            Log.d(TAG, "processSideMetrics: Fallback to ankle Y detection at frame $frameNumber, side $side: ${events.map { it.type }}, ankleY: ${ankle.y}, visibility: ${ankle.visibility}")
+            
+            for (event in events) {
+                if (event.type == PedalExtremum.BDC) {
+                    val bestTracker = if (side == BodySide.LEFT) leftBdcBest else rightBdcBest
+                    if (bestTracker == null || event.confidence > bestTracker.second) {
+                        if (side == BodySide.LEFT) {
+                            leftBdcBest = Pair(frameNumber, event.confidence)
+                        } else {
+                            rightBdcBest = Pair(frameNumber, event.confidence)
+                        }
+                        val bitmap = currentFrameBitmap.copy(currentFrameBitmap.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
+                        keyFrameMap[CriticalPedalPosition.BDC] = Triple(frameNumber, bitmap, poseFrame.copy())
                     }
-                }
-                // Capture TDC frame with best confidence
-                val bestTracker = if (side == BodySide.LEFT) leftTdcBest else rightTdcBest
-                if (bestTracker == null || event.confidence > bestTracker.second) {
-                    Log.d(TAG, "Found better TDC at frame $frameNumber (confidence=${event.confidence}${if (bestTracker != null) ", was ${bestTracker.second} at frame ${bestTracker.first}" else ", first detection"})")
-                    if (side == BodySide.LEFT) {
-                        leftTdcBest = Pair(frameNumber, event.confidence)
-                    } else {
-                        rightTdcBest = Pair(frameNumber, event.confidence)
+                    val angleAtBdc = kneeAngle ?: 0f 
+                    val cycleMetrics = aggregator.endCycleAtBdc(event.frameNumber, event.timestampMs, angleAtBdc, ankleAngle)
+                } else if (event.type == PedalExtremum.TDC) {
+                    val bestTracker = if (side == BodySide.LEFT) leftTdcBest else rightTdcBest
+                    if (bestTracker == null || event.confidence > bestTracker.second) {
+                        if (side == BodySide.LEFT) {
+                            leftTdcBest = Pair(frameNumber, event.confidence)
+                        } else {
+                            rightTdcBest = Pair(frameNumber, event.confidence)
+                        }
+                        val bitmap = currentFrameBitmap.copy(currentFrameBitmap.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
+                        keyFrameMap[CriticalPedalPosition.TDC] = Triple(frameNumber, bitmap, poseFrame.copy())
                     }
-                    val bitmap = currentFrameBitmap.copy(currentFrameBitmap.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
-                    keyFrameMap[CriticalPedalPosition.TDC] = Triple(frameNumber, bitmap, poseFrame.copy())
-                    Log.d(TAG, "Updated TDC frame - frameNumber=$frameNumber, confidence=${event.confidence}, bitmap!=null=${bitmap != null}")
+                    aggregator.recordTdc(kneeAngle, hipAngle)
                 }
-                
-                // Record TDC for the aggregator (including hip angle at TDC)
-                aggregator.recordTdc(kneeAngle, hipAngle)
             }
         }
     }

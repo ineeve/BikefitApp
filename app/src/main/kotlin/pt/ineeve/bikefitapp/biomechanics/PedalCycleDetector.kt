@@ -3,6 +3,8 @@ package pt.ineeve.bikefitapp.biomechanics
 import pt.ineeve.bikefitapp.pose.Landmark
 import pt.ineeve.bikefitapp.pose.PoseFrame
 import pt.ineeve.bikefitapp.pose.PoseLandmarkIndex
+import pt.ineeve.bikefitapp.calibration.BikeCalibration
+import kotlin.math.atan2
 
 /**
  * Represents a detected extremum in the pedal cycle.
@@ -39,11 +41,21 @@ data class PedalExtremumEvent(
  * @param windowSize Number of frames to use for sliding window extrema detection
  * @param minCycleFrames Minimum frames between extrema of same type (prevents noise)
  * @param visibilityThreshold Minimum visibility for ankle landmark
+ * @param useCrankAngleDetection Use crank angle ranges for TDC/BDC detection (requires calibration)
+ * @param tdcCrankAngleMin Minimum crank angle for TDC (top dead center at 12 o'clock)
+ * @param tdcCrankAngleMax Maximum crank angle for TDC (range includes 355-5 degrees)
+ * @param bdcCrankAngleMin Minimum crank angle for BDC (bottom dead center at 6 o'clock)
+ * @param bdcCrankAngleMax Maximum crank angle for BDC (range: 175-185 degrees)
  */
 data class PedalCycleDetectorConfig(
     val windowSize: Int = 5,
     val minCycleFrames: Int = 5,
-    val visibilityThreshold: Float = 0.5f
+    val visibilityThreshold: Float = 0.5f,
+    val useCrankAngleDetection: Boolean = true,
+    val tdcCrankAngleMin: Float = 355f,
+    val tdcCrankAngleMax: Float = 5f,
+    val bdcCrankAngleMin: Float = 175f,
+    val bdcCrankAngleMax: Float = 185f
 )
 
 /**
@@ -72,14 +84,16 @@ data class PedalCycleDetectorConfig(
  * ```
  */
 class PedalCycleDetector(
-    private val config: PedalCycleDetectorConfig = PedalCycleDetectorConfig()
+    private val config: PedalCycleDetectorConfig = PedalCycleDetectorConfig(),
+    private val calibration: BikeCalibration? = null
 ) {
-    // Sliding window buffer for ankle Y positions
+    // Sliding window buffer for ankle Y positions and crank angles
     private data class FrameData(
         val frameNumber: Long,
         val timestampMs: Long,
         val ankleY: Float,
-        val visibility: Float
+        val visibility: Float,
+        val crankAngle: Float? = null  // Crank angle in degrees [0, 360), null if unable to compute
     )
 
     private val leftBuffer = ArrayDeque<FrameData>(config.windowSize * 2)
@@ -115,11 +129,28 @@ class PedalCycleDetector(
             return emptyList()
         }
 
+        // Calculate crank angle if we have calibration and crank angle detection is enabled
+        var crankAngle: Float? = null
+        if (config.useCrankAngleDetection && calibration?.bottomBracket != null) {
+            val footIndex = if (side == BodySide.LEFT) {
+                PoseLandmarkIndex.LEFT_FOOT_INDEX
+            } else {
+                PoseLandmarkIndex.RIGHT_FOOT_INDEX
+            }
+            
+            val foot = poseFrame.landmarks[footIndex]
+            if (foot != null && foot.visibility >= config.visibilityThreshold) {
+                val bb = calibration.bottomBracket!!
+                crankAngle = computeCrankAngle(foot.x, foot.y, bb.x, bb.y)
+            }
+        }
+
         val frameData = FrameData(
             frameNumber = poseFrame.frameNumber,
             timestampMs = poseFrame.timestampMs,
             ankleY = ankle.y,
-            visibility = ankle.visibility
+            visibility = ankle.visibility,
+            crankAngle = crankAngle
         )
 
         val buffer = if (side == BodySide.LEFT) leftBuffer else rightBuffer
@@ -166,7 +197,8 @@ class PedalCycleDetector(
             frameNumber = frameNumber,
             timestampMs = timestampMs,
             ankleY = ankleY,
-            visibility = visibility
+            visibility = visibility,
+            crankAngle = null  // Crank angle not available for this method
         )
 
         val buffer = if (side == BodySide.LEFT) leftBuffer else rightBuffer
@@ -184,7 +216,54 @@ class PedalCycleDetector(
     }
 
     /**
-     * Detects extrema in the buffer using sliding window.
+     * Computes raw crank angle from foot position relative to bottom bracket.
+     * 
+     * @param footX X coordinate of foot index landmark
+     * @param footY Y coordinate of foot index landmark
+     * @param bbX X coordinate of bottom bracket (crank pivot)
+     * @param bbY Y coordinate of bottom bracket
+     * @return Crank angle in degrees [0, 360)
+     */
+    private fun computeCrankAngle(footX: Float, footY: Float, bbX: Float, bbY: Float): Float {
+        val dx = footX - bbX
+        val dy = footY - bbY
+        
+        // Negate Y because MediaPipe Y increases downward (image space)
+        // but crank angles need standard Cartesian orientation
+        val crankAngleRadians = kotlin.math.atan2(-dy.toDouble(), dx.toDouble())
+        var crankAngleDegrees = Math.toDegrees(crankAngleRadians).toFloat()
+        
+        // Normalize to [0, 360)
+        if (crankAngleDegrees < 0) crankAngleDegrees += 360f
+        
+        return crankAngleDegrees
+    }
+
+    /**
+     * Checks if a crank angle is within the TDC range (12 o'clock, 355-5 degrees).
+     * 
+     * Uses OR logic because TDC wraps around 0°/360° boundary:
+     * - angle >= 355° is in range (near 360°)
+     * - angle <= 5° is in range (near 0°)
+     * These ranges together represent the 12 o'clock position.
+     */
+    @Suppress("SENSELESS_COMPARISON")
+    private fun isInTdcRange(angle: Float): Boolean {
+        return angle >= config.tdcCrankAngleMin || angle <= config.tdcCrankAngleMax
+    }
+
+    /**
+     * Checks if a crank angle is within the BDC range (6 o'clock, 175-185 degrees).
+     */
+    private fun isInBdcRange(angle: Float): Boolean {
+        return angle >= config.bdcCrankAngleMin && angle <= config.bdcCrankAngleMax
+    }
+
+    /**
+     * Detects extrema in the buffer using either crank angle ranges or sliding window.
+     * 
+     * When crank angle detection is enabled and available, detects TDC (12 o'clock, 355-5°)
+     * and BDC (6 o'clock, 175-185°). Otherwise uses the sliding window approach on ankle Y.
      * 
      * The buffer contains recent frames. We examine whether the frame
      * at the center of the window is a local extremum by comparing
@@ -205,6 +284,88 @@ class PedalCycleDetector(
         if (candidateIndex < halfWindow) return events
 
         val candidate = buffer.elementAt(candidateIndex)
+
+        // Try crank angle-based detection first if available
+        if (config.useCrankAngleDetection && candidate.crankAngle != null) {
+            return detectExtremaByAngle(buffer, side, candidateIndex, candidate)
+        }
+
+        // Fall back to ankle Y-based detection
+        return detectExtremaByAnkleY(buffer, side, candidateIndex, candidate, halfWindow)
+    }
+
+    /**
+     * Detects TDC/BDC by checking if crank angle is in the appropriate range.
+     */
+    private fun detectExtremaByAngle(
+        buffer: ArrayDeque<FrameData>,
+        side: BodySide,
+        candidateIndex: Int,
+        candidate: FrameData
+    ): List<PedalExtremumEvent> {
+        val events = mutableListOf<PedalExtremumEvent>()
+        val crankAngle = candidate.crankAngle ?: return events
+
+        val lastBdcFrame = if (side == BodySide.LEFT) lastLeftBdcFrame else lastRightBdcFrame
+        val lastTdcFrame = if (side == BodySide.LEFT) lastLeftTdcFrame else lastRightTdcFrame
+
+        val bdcFrameOk = lastBdcFrame == Long.MIN_VALUE || 
+            candidate.frameNumber - lastBdcFrame >= config.minCycleFrames
+        val tdcFrameOk = lastTdcFrame == Long.MIN_VALUE || 
+            candidate.frameNumber - lastTdcFrame >= config.minCycleFrames
+
+        if (isInBdcRange(crankAngle) && bdcFrameOk) {
+            val confidence = calculateCrankAngleConfidence(crankAngle, isBdc = true)
+            
+            events.add(PedalExtremumEvent(
+                type = PedalExtremum.BDC,
+                frameNumber = candidate.frameNumber,
+                timestampMs = candidate.timestampMs,
+                ankleY = candidate.ankleY,
+                side = side,
+                confidence = confidence
+            ))
+
+            if (side == BodySide.LEFT) {
+                lastLeftBdcFrame = candidate.frameNumber
+            } else {
+                lastRightBdcFrame = candidate.frameNumber
+            }
+        }
+
+        if (isInTdcRange(crankAngle) && tdcFrameOk) {
+            val confidence = calculateCrankAngleConfidence(crankAngle, isBdc = false)
+            
+            events.add(PedalExtremumEvent(
+                type = PedalExtremum.TDC,
+                frameNumber = candidate.frameNumber,
+                timestampMs = candidate.timestampMs,
+                ankleY = candidate.ankleY,
+                side = side,
+                confidence = confidence
+            ))
+
+            if (side == BodySide.LEFT) {
+                lastLeftTdcFrame = candidate.frameNumber
+            } else {
+                lastRightTdcFrame = candidate.frameNumber
+            }
+        }
+
+        return events
+    }
+
+    /**
+     * Detects TDC/BDC using sliding window on ankle Y position (legacy method).
+     */
+    private fun detectExtremaByAnkleY(
+        buffer: ArrayDeque<FrameData>,
+        side: BodySide,
+        candidateIndex: Int,
+        candidate: FrameData,
+        halfWindow: Int
+    ): List<PedalExtremumEvent> {
+        val events = mutableListOf<PedalExtremumEvent>()
 
         // Check if candidate is a local maximum Y (BDC) or minimum Y (TDC)
         var isBdc = true
@@ -281,6 +442,37 @@ class PedalCycleDetector(
         }
 
         return events
+    }
+
+    /**
+     * Calculates confidence for a crank angle-based detection.
+     * 
+     * Confidence is higher when the angle is closer to the center of the range.
+     * For TDC (355-5°), center is 0° or 360°.
+     * For BDC (175-185°), center is 180°.
+     */
+    private fun calculateCrankAngleConfidence(angle: Float, isBdc: Boolean): Float {
+        val centerAngle = if (isBdc) 180f else 0f
+        val minAngle = if (isBdc) config.bdcCrankAngleMin else config.tdcCrankAngleMin
+        val maxAngle = if (isBdc) config.bdcCrankAngleMax else config.tdcCrankAngleMax
+        
+        // For TDC with wraparound (355-5°), adjust angle calculation
+        val distanceToCenter = if (!isBdc && (angle > 180f)) {
+            // Angle is in the 355-360 range, distance to 0/360 is smaller
+            minOf(angle - 355f, 360f - angle + 5f)
+        } else if (!isBdc && angle <= 5f) {
+            // Angle is in the 0-5 range, distance to 0 is direct
+            angle
+        } else {
+            // BDC or regular distance calculation
+            kotlin.math.abs(angle - centerAngle)
+        }
+        
+        val maxDistance = if (isBdc) (maxAngle - minAngle) / 2f else 5f
+        
+        // Normalize: closer to center = higher confidence
+        val normalizedDistance = (distanceToCenter / maxDistance).coerceIn(0f, 1f)
+        return 1f - (normalizedDistance * 0.5f)  // Range: 0.5 to 1.0
     }
 
     /**
@@ -368,14 +560,16 @@ class PedalCycleDetector(
          * @param frames List of pose frames to analyze
          * @param side Which leg to analyze
          * @param config Detector configuration
+         * @param calibration Bike calibration (required if using crank angle detection)
          * @return List of all detected extrema events in chronological order
          */
         fun analyzeFrameSequence(
             frames: List<PoseFrame>,
             side: BodySide,
-            config: PedalCycleDetectorConfig = PedalCycleDetectorConfig()
+            config: PedalCycleDetectorConfig = PedalCycleDetectorConfig(),
+            calibration: BikeCalibration? = null
         ): List<PedalExtremumEvent> {
-            val detector = PedalCycleDetector(config)
+            val detector = PedalCycleDetector(config, calibration)
             val allEvents = mutableListOf<PedalExtremumEvent>()
 
             for (frame in frames) {
