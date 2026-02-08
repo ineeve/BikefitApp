@@ -72,6 +72,11 @@ class VideoAnalysisActivity : AppCompatActivity() {
     private val rightCycleAggregator = CycleAggregator(BodySide.RIGHT)
     private val landmarkSmoother = pt.ineeve.bikefitapp.pose.OneEuroLandmarkSmoother()
     
+    // Savitzky-Golay filters for joint angle smoothing
+    // Default configuration: windowSize=11, polyOrder=3 for 60 FPS
+    private val leftAngleFilter = pt.ineeve.bikefitapp.biomechanics.JointAngleFilter()
+    private val rightAngleFilter = pt.ineeve.bikefitapp.biomechanics.JointAngleFilter()
+    
     // Continuous crank angle tracking
     private val crankAngleTracker = CrankAngleTracker
     
@@ -681,18 +686,25 @@ class VideoAnalysisActivity : AppCompatActivity() {
 
         if (knee == null || ankle == null) return
 
+        // Calculate raw angles
         val kneeResult = KneeAngleCalculator.calculateKneeAngle(poseResult, side)
-        val kneeAngle = if (kneeResult.isValid) kneeResult.angle else null
+        val rawKneeAngle = if (kneeResult.isValid) kneeResult.angle else null
         
         val hipResult = HipAngleCalculator.calculateHipAngle(poseResult, side)
-        val hipAngle = if (hipResult.isValid) hipResult.angle else null
+        val rawHipAngle = if (hipResult.isValid) hipResult.angle else null
         
         val torsoResult = TorsoAngleCalculator.calculateTorsoAngle(poseResult, side)
-        val torsoAngle = if (torsoResult.isValid) torsoResult.angle else null
+        val rawTorsoAngle = if (torsoResult.isValid) torsoResult.angle else null
         
-        // Calculate ankle angle
         val ankleResult = AnkleAngleCalculator.calculateAnkleAngle(poseResult, side)
-        val ankleAngle = if (ankleResult.isValid) ankleResult.angle else null
+        val rawAnkleAngle = if (ankleResult.isValid) ankleResult.angle else null
+        
+        // Apply Savitzky-Golay filtering to smooth angles
+        val angleFilter = if (side == BodySide.LEFT) leftAngleFilter else rightAngleFilter
+        val kneeAngle = angleFilter.filterKneeAngle(rawKneeAngle) ?: rawKneeAngle
+        val hipAngle = angleFilter.filterHipAngle(rawHipAngle) ?: rawHipAngle
+        val torsoAngle = angleFilter.filterTorsoAngle(rawTorsoAngle) ?: rawTorsoAngle
+        val ankleAngle = angleFilter.filterAnkleAngle(rawAnkleAngle) ?: rawAnkleAngle
         
         // Create pose frame for KOPS computation
         val poseFrame = PoseFrame(
