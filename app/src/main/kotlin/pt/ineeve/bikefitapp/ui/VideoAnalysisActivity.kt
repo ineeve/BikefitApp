@@ -106,11 +106,15 @@ class VideoAnalysisActivity : AppCompatActivity() {
     
     // Video info
     private var videoDurationMs = 0L
+    private var videoActualFps = 0f
 
     companion object {
         const val EXTRA_VIDEO_URI = "extra_video_uri"
         private const val TAG = "VideoAnalysisActivity"
         private const val MAX_CYCLES_TO_COLLECT = 10
+        private const val TARGET_SAMPLING_FPS = 60f
+        private const val TARGET_INTERVAL_MS = 1000f / TARGET_SAMPLING_FPS // ~16.67ms
+        private const val TARGET_INTERVAL_MICROS = (TARGET_INTERVAL_MS * 1000).toLong() // ~16667 microseconds
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -215,6 +219,21 @@ class VideoAnalysisActivity : AppCompatActivity() {
                 
                 val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
                 videoDurationMs = durationStr?.toLongOrNull() ?: 0L
+
+                // Get video FPS
+                val fpsStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)
+                videoActualFps = fpsStr?.toFloatOrNull() ?: 0f
+                
+                // If FPS metadata not available, try calculating from frame count and duration
+                if (videoActualFps == 0f && videoDurationMs > 0) {
+                    val frameCountStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_FRAME_COUNT)
+                    val frameCount = frameCountStr?.toIntOrNull()
+                    if (frameCount != null && frameCount > 0) {
+                        videoActualFps = (frameCount * 1000f) / videoDurationMs
+                    }
+                }
+                
+                Log.d(TAG, "Video FPS: $videoActualFps, Target sampling FPS: $TARGET_SAMPLING_FPS")
 
                 // Try to get first frame
                 val frame = retriever.getFrameAtTime(0)
@@ -403,9 +422,21 @@ class VideoAnalysisActivity : AppCompatActivity() {
             return
         }
         
-        // Estimate frames
+        // Check if video FPS is less than target and show warning
+        if (videoActualFps > 0 && videoActualFps < TARGET_SAMPLING_FPS) {
+            Log.w(TAG, "Video FPS ($videoActualFps) is less than target sampling rate ($TARGET_SAMPLING_FPS fps)")
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    this@VideoAnalysisActivity,
+                    "Warning: Video recorded at ${"%.1f".format(videoActualFps)} fps (target: ${TARGET_SAMPLING_FPS.toInt()} fps)",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+        
+        // Estimate frames based on 60fps sampling
         val frameCountStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_FRAME_COUNT)
-        val frameCount = frameCountStr?.toIntOrNull() ?: ((videoDurationMs / 33).toInt())
+        val frameCount = frameCountStr?.toIntOrNull() ?: ((videoDurationMs / TARGET_INTERVAL_MS).toInt())
         
         var analyzedFrames = 0
         
@@ -428,7 +459,7 @@ class VideoAnalysisActivity : AppCompatActivity() {
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
                      retriever.getFrameAtIndex(i)
                 } else {
-                     retriever.getFrameAtTime(i * 33333L, MediaMetadataRetriever.OPTION_CLOSEST)
+                     retriever.getFrameAtTime(i * TARGET_INTERVAL_MICROS, MediaMetadataRetriever.OPTION_CLOSEST)
                 }
             } catch (e: Exception) { null }
 
@@ -436,7 +467,9 @@ class VideoAnalysisActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     videoFrameView.setImageBitmap(frame)
                 }
-                val timestampMs = (i * 33).toLong() // Approx timestamp if not available from frame
+                // Use 60fps timestamp regardless of video's actual FPS for consistent analysis timing.
+                // If video < 60fps, frames may be duplicated, but this ensures uniform temporal resolution.
+                val timestampMs = (i * TARGET_INTERVAL_MS).toLong()
                 processFrame(frame, timestampMs, i.toLong())
             }
 
