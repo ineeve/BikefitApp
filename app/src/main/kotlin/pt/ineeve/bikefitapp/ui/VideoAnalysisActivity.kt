@@ -71,6 +71,9 @@ class VideoAnalysisActivity : AppCompatActivity() {
     private val leftCycleAggregator = CycleAggregator(BodySide.LEFT)
     private val rightCycleAggregator = CycleAggregator(BodySide.RIGHT)
     
+    // Continuous crank angle tracking
+    private val crankAngleTracker = CrankAngleTracker
+    
     // KOPS crank scale cache (computed once from first 30 frames at 3 o'clock)
     private var crankScaleCacheLeft: KneeOverPedalOffset.CrankScaleCache = KneeOverPedalOffset.CrankScaleCache.INVALID
     private var crankScaleCacheRight: KneeOverPedalOffset.CrankScaleCache = KneeOverPedalOffset.CrankScaleCache.INVALID
@@ -96,6 +99,10 @@ class VideoAnalysisActivity : AppCompatActivity() {
     
     // Track latest crank angle for overlay display
     private var lastCrankAngle: Float? = null
+    private var lastCrankAngleLeft: Float? = null
+    private var lastCrankAngleRight: Float? = null
+    private var lastInstantaneousRpmLeft: Float? = null
+    private var lastInstantaneousRpmRight: Float? = null
     
     // Video info
     private var videoDurationMs = 0L
@@ -370,6 +377,9 @@ class VideoAnalysisActivity : AppCompatActivity() {
         contextBiasCard.visibility = View.GONE
         progressContainer.visibility = View.VISIBLE
         
+        // Reset tracking state for new analysis
+        crankAngleTracker.reset()
+        
         // Initialize Pose Detector
         poseLandmarkerWrapper = PoseLandmarkerWrapper(
             context = this,
@@ -475,11 +485,25 @@ class VideoAnalysisActivity : AppCompatActivity() {
                          AngleType.ANKLE -> { /* Not shown in live metrics panel */ }
                      }
                  }
+                 
+                 // Update live crank angle and cadence from tracker
+                 lastCrankAngle?.let { 
+                     cycleMetricsOverlay.updateCurrentCrankAngle(it)
+                     Log.d(TAG, "UI update: crank angle = $it°")
+                 }
+                 // Display instantaneous RPM from whichever side has latest data
+                 val rpm = lastInstantaneousRpmLeft ?: lastInstantaneousRpmRight ?: 0f
+                 if (rpm > 0) {
+                     cycleMetricsOverlay.updateCurrentCadence(rpm)
+                     Log.d(TAG, "UI update: cadence = $rpm RPM")
+                 }
              }
              
-             // Only process cycle metrics for the dominant side
+             // Process both sides for crank angle tracking (ensures continuous data)
+             // But only process cycle metrics for the dominant side
              val dominantSide = detectDominantSide(poseResult)
-             processSideMetrics(poseResult, dominantSide, timestampMs, frameNumber, bitmap)
+             processSideMetrics(poseResult, BodySide.LEFT, timestampMs, frameNumber, bitmap)
+             processSideMetrics(poseResult, BodySide.RIGHT, timestampMs, frameNumber, bitmap)
          }
     }
 
@@ -642,25 +666,51 @@ class VideoAnalysisActivity : AppCompatActivity() {
         )
         
         // Collect 3 o'clock frames for crank scale computation (8 frames provides ~3-4 rotation cycles for averaging)
-        // Use ThreeOClockDetector (same logic as key frame detection) to identify valid 3 o'clock frames
-        val threeOClockEvent = ThreeOClockDetector.detectAtFrame(poseFrame, side, currentCalibration)
+        // Use CrankAngleTracker to get measurements near 3 o'clock (90°)
         val threeOClockFramesList = if (side == BodySide.LEFT) threeOClockFramesLeft else threeOClockFramesRight
         val crankScaleCache = if (side == BodySide.LEFT) crankScaleCacheLeft else crankScaleCacheRight
         
-        if (threeOClockEvent != null && threeOClockFramesList.size < 8 && !crankScaleCache.isValid) {
-            threeOClockFramesList.add(poseFrame)
-            Log.d(TAG, "processSideMetrics: Added frame to 3 O'Clock collection for side $side. Count: ${threeOClockFramesList.size}/8, confidence=${threeOClockEvent.confidence}")
+        // Track continuous crank angle for all frames using foot landmark
+        // Use foot index instead of ankle for better pedal position tracking
+        val footIndex = if (side == BodySide.LEFT) PoseLandmarkIndex.LEFT_FOOT_INDEX else PoseLandmarkIndex.RIGHT_FOOT_INDEX
+        val foot = poseResult.getLandmark(footIndex) ?: ankle // Fallback to ankle if foot not available
+        
+        val rawCrankAngle = crankAngleTracker.computeRawCrankAngle(
+            footX = foot.x,
+            footY = foot.y,
+            bbX = currentCalibration.bottomBracket?.x ?: 0f,
+            bbY = currentCalibration.bottomBracket?.y ?: 0f
+        )
+        if (rawCrankAngle >= 0 && currentCalibration.bottomBracket != null) {
+            // Get calibrated camera side from bike calibration
+            val calibratedSide = currentCalibration.getCameraSide()
             
-            // Compute crank scale once we reach 8 frames
-            if (threeOClockFramesList.size >= 8) {
-                Log.d(TAG, "processSideMetrics: Computing crank scale from 8 frames for side $side")
-                val newCache = KneeOverPedalOffset.computeCrankScale(threeOClockFramesList, side, currentCalibration)
-                Log.d(TAG, "processSideMetrics: Crank scale computed for side $side: scale=${newCache.scale}, isValid=${newCache.isValid}, frameCount=${newCache.frameCount}")
+            val trackingResult = crankAngleTracker.trackAngle(
+                rawAngle = rawCrankAngle,
+                frameNumber = frameNumber,
+                timestampMs = timestampMs,
+                side = side,
+                calibratedSide = calibratedSide,
+                footY = foot.y,
+                footX = foot.x,
+                bbY = currentCalibration.bottomBracket?.y,
+                crankLengthMm = currentCalibration.crankLengthMm
+            )
+            
+            // Update latest crank angle metrics - only if tracking was successful
+            if (trackingResult != null) {
                 if (side == BodySide.LEFT) {
-                    crankScaleCacheLeft = newCache
+                    lastCrankAngleLeft = trackingResult.filteredAngle
+                    lastInstantaneousRpmLeft = trackingResult.instantaneousRpm
                 } else {
-                    crankScaleCacheRight = newCache
+                    lastCrankAngleRight = trackingResult.filteredAngle
+                    lastInstantaneousRpmRight = trackingResult.instantaneousRpm
                 }
+                
+                // Use filtered angle for 3 O'Clock detection as well
+                lastCrankAngle = trackingResult.filteredAngle
+                
+                Log.d(TAG, "processSideMetrics: Tracked crank angle for side $side: raw=$rawCrankAngle°, filtered=${trackingResult.filteredAngle}°, rpm=${trackingResult.instantaneousRpm}")
             }
         }
         
@@ -681,37 +731,50 @@ class VideoAnalysisActivity : AppCompatActivity() {
         val keyFrameMap = if (side == BodySide.LEFT) leftKeyFrameSet else rightKeyFrameSet
         val sidePrefix = if (side == BodySide.LEFT) "L" else "R"
         
-        // Check for 3 O'Clock position (pedal at horizontal)
-        // Note: threeOClockEvent was already computed above for crank scale collection
-        Log.d(TAG, "processSideMetrics: Checking 3 O'Clock detection for frame $frameNumber, side $side, poseFrame valid: ${poseFrame.isValid}, landmarks: ${poseFrame.landmarks.size}")
-        Log.d(TAG, "processSideMetrics: 3 O'Clock detection result: $threeOClockEvent, frameNumber=$frameNumber, confidence=${threeOClockEvent?.confidence}")
-        
-        if (threeOClockEvent != null) {
-            // Update the latest crank angle for overlay display
-            lastCrankAngle = threeOClockEvent.crankAngleDegrees
+        // Collect 3 O'Clock frames using CrankAngleTracker (frames near 90° with high confidence)
+        if (threeOClockFramesList.size < 8 && !crankScaleCache.isValid) {
+            val near90 = crankAngleTracker.getMeasurementsNear(
+                targetAngle = 90f,
+                toleranceDegrees = 5f,
+                minConfidence = 0.6f,
+                side = side
+            )
             
-            // Track best 3 O'Clock by confidence (capture frame with HIGHEST confidence, not first)
-            val bestTracker = if (side == BodySide.LEFT) leftThreeOClockBest else rightThreeOClockBest
-            
-            // Compare confidence with current best (if any)
-            if (bestTracker == null || threeOClockEvent.confidence > bestTracker.second) {
-                Log.d(TAG, "processSideMetrics: Found better 3 O'Clock at frame $frameNumber (confidence=${threeOClockEvent.confidence}${if (bestTracker != null) ", was ${bestTracker.second} at frame ${bestTracker.first}" else ", first detection"})")
+            if (near90.isNotEmpty()) {
+                // Add the latest high-confidence measurement near 3 O'Clock
+                val measurement = near90.last()
+                threeOClockFramesList.add(poseFrame)
+                Log.d(TAG, "processSideMetrics: Added frame to 3 O'Clock collection for side $side. Count: ${threeOClockFramesList.size}/8, angle=${measurement.filteredAngle}°, confidence=${measurement.confidence}")
                 
-                // Update tracker and capture frame
-                if (side == BodySide.LEFT) {
-                    leftThreeOClockBest = Pair(frameNumber, threeOClockEvent.confidence)
-                } else {
-                    rightThreeOClockBest = Pair(frameNumber, threeOClockEvent.confidence)
+                // Track best 3 O'Clock by confidence
+                val bestTracker = if (side == BodySide.LEFT) leftThreeOClockBest else rightThreeOClockBest
+                if (bestTracker == null || measurement.confidence > bestTracker.second) {
+                    Log.d(TAG, "processSideMetrics: Found better 3 O'Clock at frame $frameNumber (confidence=${measurement.confidence}${if (bestTracker != null) ", was ${bestTracker.second} at frame ${bestTracker.first}" else ", first detection"})")
+                    
+                    if (side == BodySide.LEFT) {
+                        leftThreeOClockBest = Pair(frameNumber, measurement.confidence)
+                    } else {
+                        rightThreeOClockBest = Pair(frameNumber, measurement.confidence)
+                    }
+                    
+                    // Capture best 3 O'Clock frame
+                    keyFrameMap.remove(CriticalPedalPosition.THREE_O_CLOCK)
+                    val bitmap = currentFrameBitmap.copy(currentFrameBitmap.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
+                    keyFrameMap[CriticalPedalPosition.THREE_O_CLOCK] = Triple(frameNumber, bitmap, poseFrame.copy())
+                    Log.d(TAG, "processSideMetrics: Updated 3 O'Clock frame - frameNumber=$frameNumber, confidence=${measurement.confidence}, bitmap!=null=${bitmap != null}")
                 }
-                
-                // Clear previous 3 O'Clock frame from keyFrameMap to allow update
-                keyFrameMap.remove(CriticalPedalPosition.THREE_O_CLOCK)
-                
-                // Capture new best 3 O'Clock frame
-                val bitmap = currentFrameBitmap.copy(currentFrameBitmap.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
-
-                keyFrameMap[CriticalPedalPosition.THREE_O_CLOCK] = Triple(frameNumber, bitmap, poseFrame.copy())
-                Log.d(TAG, "processSideMetrics: Updated 3 O'Clock frame - frameNumber=$frameNumber, confidence=${threeOClockEvent.confidence}, bitmap!=null=${bitmap != null}")
+            }
+            
+            // Compute crank scale once we reach 8 frames
+            if (threeOClockFramesList.size >= 8) {
+                Log.d(TAG, "processSideMetrics: Computing crank scale from 8 frames for side $side")
+                val newCache = KneeOverPedalOffset.computeCrankScale(threeOClockFramesList, side, currentCalibration)
+                Log.d(TAG, "processSideMetrics: Crank scale computed for side $side: scale=${newCache.scale}, isValid=${newCache.isValid}, frameCount=${newCache.frameCount}")
+                if (side == BodySide.LEFT) {
+                    crankScaleCacheLeft = newCache
+                } else {
+                    crankScaleCacheRight = newCache
+                }
             }
         }
         
@@ -726,6 +789,15 @@ class VideoAnalysisActivity : AppCompatActivity() {
         
         for (event in events) {
             if (event.type == PedalExtremum.BDC) {
+                // Seed the elliptical model from BDC/TDC spacing
+                val lastTdcFrame = if (side == BodySide.LEFT) leftTdcBest?.first else rightTdcBest?.first
+                if (lastTdcFrame != null && event.frameNumber > lastTdcFrame) {
+                    val halfCycleFrames = (event.frameNumber - lastTdcFrame).toInt()
+                    if (halfCycleFrames in 3..60) {
+                        crankAngleTracker.seedFromHalfCycle(halfCycleFrames, side)
+                        Log.d(TAG, "processSideMetrics: Seeded elliptical model from TDC→BDC: $halfCycleFrames frames, side $side")
+                    }
+                }
                 // Capture BDC frame with best confidence
                 val bestTracker = if (side == BodySide.LEFT) leftBdcBest else rightBdcBest
                 if (bestTracker == null || event.confidence > bestTracker.second) {
@@ -758,6 +830,15 @@ class VideoAnalysisActivity : AppCompatActivity() {
                     }
                 }
             } else if (event.type == PedalExtremum.TDC) {
+                // Seed the elliptical model from BDC→TDC spacing
+                val lastBdcFrame = if (side == BodySide.LEFT) leftBdcBest?.first else rightBdcBest?.first
+                if (lastBdcFrame != null && event.frameNumber > lastBdcFrame) {
+                    val halfCycleFrames = (event.frameNumber - lastBdcFrame).toInt()
+                    if (halfCycleFrames in 3..60) {
+                        crankAngleTracker.seedFromHalfCycle(halfCycleFrames, side)
+                        Log.d(TAG, "processSideMetrics: Seeded elliptical model from BDC→TDC: $halfCycleFrames frames, side $side")
+                    }
+                }
                 // Capture TDC frame with best confidence
                 val bestTracker = if (side == BodySide.LEFT) leftTdcBest else rightTdcBest
                 if (bestTracker == null || event.confidence > bestTracker.second) {

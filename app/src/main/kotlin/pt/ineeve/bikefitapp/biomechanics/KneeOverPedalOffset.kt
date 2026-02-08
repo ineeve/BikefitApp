@@ -165,6 +165,31 @@ data class KneeOverPedalOffsetConfig(
 object KneeOverPedalOffset {
     private const val TAG = "KneeOverPedalOffset"
 
+    // Safe logging wrapper that handles Android Log not being available in unit tests
+    private fun logDebug(tag: String, message: String) {
+        try {
+            Log.d(tag, message)
+        } catch (e: Exception) {
+            // Silently fail if Log is not available (unit tests)
+        }
+    }
+    
+    private fun logInfo(tag: String, message: String) {
+        try {
+            Log.i(tag, message)
+        } catch (e: Exception) {
+            // Silently fail if Log is not available (unit tests)
+        }
+    }
+    
+    private fun logWarn(tag: String, message: String) {
+        try {
+            Log.w(tag, message)
+        } catch (e: Exception) {
+            // Silently fail if Log is not available (unit tests)
+        }
+    }
+
     /**
      * Cache for crank scale factor (computed once from first 30 frames).
      * Immutable holder to avoid synchronization issues.
@@ -201,7 +226,7 @@ object KneeOverPedalOffset {
     ): KneeOverPedalOffsetResult {
         // Validate calibration
         if (calibration.bottomBracket == null || calibration.crankLengthMm == null) {
-            Log.w(TAG, "Incomplete calibration: BB=${calibration.bottomBracket != null}, crank=${calibration.crankLengthMm != null}. Cannot compute KOPS.")
+            logWarn(TAG, "Incomplete calibration: BB=${calibration.bottomBracket != null}, crank=${calibration.crankLengthMm != null}. Cannot compute KOPS.")
             return KneeOverPedalOffsetResult.invalid(side)
         }
 
@@ -210,22 +235,22 @@ object KneeOverPedalOffset {
         }
 
         // Get landmark indices based on side
-        val (hipIndex, kneeIndex, ankleIndex) = getLandmarkIndices(side)
+        val (hipIndex, kneeIndex, footIndex) = getLandmarkIndices(side)
 
         // Get the landmarks
         val hip = frame.landmarks[hipIndex]
         val knee = frame.landmarks[kneeIndex]
-        val ankle = frame.landmarks[ankleIndex]
+        val foot = frame.landmarks[footIndex]
 
         // Check visibility
         if (!hip.isVisible(config.visibilityThreshold) ||
             !knee.isVisible(config.visibilityThreshold) ||
-            !ankle.isVisible(config.visibilityThreshold)) {
+            !foot.isVisible(config.visibilityThreshold)) {
             return KneeOverPedalOffsetResult.invalid(side)
         }
 
         // Calculate average confidence
-        val confidence = (hip.visibility + knee.visibility + ankle.visibility) / 3f
+        val confidence = (hip.visibility + knee.visibility + foot.visibility) / 3f
 
         // Compute spindle position
         // Use user-marked spindle if available, otherwise compute geometrically
@@ -243,16 +268,16 @@ object KneeOverPedalOffset {
         )
 
         // Log diagnostic information
-        Log.d(TAG, "KOPS Computation Frame #${frame.frameNumber}:")
-        Log.d(TAG, "  Landmarks: hip=(${hip.x}, ${hip.y}), knee=(${knee.x}, ${knee.y}), ankle=(${ankle.x}, ${ankle.y})")
-        Log.d(TAG, "  Calibration: BB=(${calibration.bottomBracket.x}, ${calibration.bottomBracket.y}), crankLen=${calibration.crankLengthMm}mm")
-        Log.d(TAG, "  CrankScale: $crankScale")
-        Log.d(TAG, "  Spindle: (${spindle.x}, ${spindle.y}) [${if (calibration.spindle != null) "marked" else "geometric"}]")
+        logDebug(TAG, "KOPS Computation Frame #${frame.frameNumber}:")
+        logDebug(TAG, "  Landmarks: hip=(${hip.x}, ${hip.y}), knee=(${knee.x}, ${knee.y}), foot=(${foot.x}, ${foot.y})")
+        logDebug(TAG, "  Calibration: BB=(${calibration.bottomBracket.x}, ${calibration.bottomBracket.y}), crankLen=${calibration.crankLengthMm}mm")
+        logDebug(TAG, "  CrankScale: $crankScale")
+        logDebug(TAG, "  Spindle: (${spindle.x}, ${spindle.y}) [${if (calibration.spindle != null) "marked" else "geometric"}]")
 
         // Compute the offset using crank geometry
         val components = computeOffsetWithSpindle(hip, knee, spindle, config)
 
-        Log.d(TAG, "  FemurLength: ${components.femurLength}, RawOffset: ${components.rawOffset}, NormalizedOffset: ${components.normalizedOffset}, Alignment: ${components.alignment}")
+        logDebug(TAG, "  FemurLength: ${components.femurLength}, RawOffset: ${components.rawOffset}, NormalizedOffset: ${components.normalizedOffset}, Alignment: ${components.alignment}")
 
         return KneeOverPedalOffsetResult(
             normalizedOffset = components.normalizedOffset,
@@ -291,7 +316,7 @@ object KneeOverPedalOffset {
     ): KneeOverPedalOffsetResult {
         // Validate calibration
         if (calibration.bottomBracket == null || calibration.crankLengthMm == null) {
-            Log.w(TAG, "Incomplete calibration: BB=${calibration.bottomBracket != null}, crank=${calibration.crankLengthMm != null}. Cannot compute KOPS.")
+            logWarn(TAG, "Incomplete calibration: BB=${calibration.bottomBracket != null}, crank=${calibration.crankLengthMm != null}. Cannot compute KOPS.")
             return KneeOverPedalOffsetResult.invalid(side)
         }
 
@@ -300,25 +325,25 @@ object KneeOverPedalOffset {
         }
 
         // Get landmark indices based on side
-        val (hipIndex, kneeIndex, ankleIndex) = getLandmarkIndices(side)
+        val (hipIndex, kneeIndex, footIndex) = getLandmarkIndices(side)
 
         // Get the landmarks
         val hip = landmarks[hipIndex]
         val knee = landmarks[kneeIndex]
-        val ankle = landmarks[ankleIndex]
+        val foot = landmarks[footIndex]
 
         // Check visibility
         if (!hip.isVisible(config.visibilityThreshold) ||
             !knee.isVisible(config.visibilityThreshold) ||
-            !ankle.isVisible(config.visibilityThreshold)) {
+            !foot.isVisible(config.visibilityThreshold)) {
             return KneeOverPedalOffsetResult.invalid(side)
         }
 
         // Calculate average confidence
-        val confidence = (hip.visibility + knee.visibility + ankle.visibility) / 3f
+        val confidence = (hip.visibility + knee.visibility + foot.visibility) / 3f
 
         // Compute spindle position
-        // Note: crankScale is already = meanAnkleDistance / crankLengthMm
+        // Note: crankScale is already = meanFootDistance / crankLengthMm
         // So spindle_x = BB_x + crankScale (since we're in normalized coordinates)
         val spindle = Vector2D(
             calibration.bottomBracket.x + crankScale,
@@ -368,16 +393,16 @@ object KneeOverPedalOffset {
             return false
         }
 
-        val ankleIndex = if (side == BodySide.LEFT) PoseLandmarkIndex.LEFT_ANKLE else PoseLandmarkIndex.RIGHT_ANKLE
-        val ankle = frame.landmarks[ankleIndex]
+        val footIndex = if (side == BodySide.LEFT) PoseLandmarkIndex.LEFT_FOOT_INDEX else PoseLandmarkIndex.RIGHT_FOOT_INDEX
+        val foot = frame.landmarks[footIndex]
 
-        if (!ankle.isVisible(config.visibilityThreshold)) {
+        if (!foot.isVisible(config.visibilityThreshold)) {
             return false
         }
 
         // Calculate crank angle relative to BB
-        val dx = ankle.x - calibration.bottomBracket.x
-        val dy = ankle.y - calibration.bottomBracket.y
+        val dx = foot.x - calibration.bottomBracket.x
+        val dy = foot.y - calibration.bottomBracket.y
         
         val crankAngleDegrees = Math.toDegrees(atan2(dy, dx).toDouble()).toFloat()
         
@@ -392,7 +417,7 @@ object KneeOverPedalOffset {
      * Computes crank scale factor from frames at 3 o'clock position.
      * 
      * Uses ankle-BB distance as proxy for crank length:
-     * scale = mean(|ankle - BB|) / crank_length_mm
+     * scale = mean(|foot - BB|) / crank_length_mm
      * 
      * Computes using first N frames (hardcoded limit: 30 frames).
      * 
@@ -410,65 +435,65 @@ object KneeOverPedalOffset {
     ): CrankScaleCache {
         // Validate calibration
         if (calibration.bottomBracket == null || calibration.crankLengthMm == null) {
-            Log.w(TAG, "Cannot compute crank scale: incomplete calibration")
+            logWarn(TAG, "Cannot compute crank scale: incomplete calibration")
             return CrankScaleCache.INVALID
         }
 
-        val ankleIndex = if (side == BodySide.LEFT) PoseLandmarkIndex.LEFT_ANKLE else PoseLandmarkIndex.RIGHT_ANKLE
+        val footIndex = if (side == BodySide.LEFT) PoseLandmarkIndex.LEFT_FOOT_INDEX else PoseLandmarkIndex.RIGHT_FOOT_INDEX
         val bb = Vector2D(calibration.bottomBracket.x, calibration.bottomBracket.y)
 
-        // Collect ankle-BB distances from first N frames
-        val ankleRadii = mutableListOf<Float>()
+        // Collect foot-BB distances from first N frames
+        val footRadii = mutableListOf<Float>()
         for (frame in frames) {
-            if (ankleRadii.size >= config.crankScaleFrameLimit) break
+            if (footRadii.size >= config.crankScaleFrameLimit) break
             
             if (frame.landmarks.size < PoseLandmarkIndex.LANDMARK_COUNT) continue
             
-            val ankle = frame.landmarks[ankleIndex]
-            if (!ankle.isVisible(config.visibilityThreshold)) continue
+            val foot = frame.landmarks[footIndex]
+            if (!foot.isVisible(config.visibilityThreshold)) continue
             
-            val anklePoint = Vector2D(ankle.x, ankle.y)
-            val radius = bb.distanceTo(anklePoint)
+            val footPoint = Vector2D(foot.x, foot.y)
+            val radius = bb.distanceTo(footPoint)
             if (radius > Vector2D.EPSILON) {
-                ankleRadii.add(radius)
+                footRadii.add(radius)
             }
         }
 
-        if (ankleRadii.isEmpty()) {
-            Log.w(TAG, "No valid ankle measurements for crank scale computation")
+        if (footRadii.isEmpty()) {
+            logWarn(TAG, "No valid foot measurements for crank scale computation")
             return CrankScaleCache.INVALID
         }
 
-        val meanRadius = ankleRadii.average().toFloat()
+        val meanRadius = footRadii.average().toFloat()
         val scale = meanRadius / calibration.crankLengthMm
         
-        Log.d(TAG, "Computed crank scale: $scale from ${ankleRadii.size} frames")
-        Log.d(TAG, "  MeanAnkleDistance: $meanRadius (normalized coords)")
-        Log.d(TAG, "  CrankLength: ${calibration.crankLengthMm}mm")
-        Log.d(TAG, "  BB Position: (${calibration.bottomBracket.x}, ${calibration.bottomBracket.y})")
-        Log.d(TAG, "  Individual radii: $ankleRadii")
+        logDebug(TAG, "Computed crank scale: $scale from ${footRadii.size} frames")
+        logDebug(TAG, "  MeanFootDistance: $meanRadius (normalized coords)")
+        logDebug(TAG, "  CrankLength: ${calibration.crankLengthMm}mm")
+        logDebug(TAG, "  BB Position: (${calibration.bottomBracket.x}, ${calibration.bottomBracket.y})")
+        logDebug(TAG, "  Individual radii: $footRadii")
 
-        return CrankScaleCache(scale, ankleRadii.size, true)
+        return CrankScaleCache(scale, footRadii.size, true)
     }
 
     /**
      * Gets the landmark indices for the specified body side.
      * 
      * @param side Which leg to analyze
-     * @return Triple of (hip index, knee index, ankle index)
+     * @return Triple of (hip index, knee index, foot index)
      */
     private fun getLandmarkIndices(side: BodySide): Triple<Int, Int, Int> {
         return if (side == BodySide.LEFT) {
             Triple(
                 PoseLandmarkIndex.LEFT_HIP,
                 PoseLandmarkIndex.LEFT_KNEE,
-                PoseLandmarkIndex.LEFT_ANKLE
+                PoseLandmarkIndex.LEFT_FOOT_INDEX
             )
         } else {
             Triple(
                 PoseLandmarkIndex.RIGHT_HIP,
                 PoseLandmarkIndex.RIGHT_KNEE,
-                PoseLandmarkIndex.RIGHT_ANKLE
+                PoseLandmarkIndex.RIGHT_FOOT_INDEX
             )
         }
     }
@@ -499,16 +524,16 @@ object KneeOverPedalOffset {
 
         // Guard against zero femur length
         if (femurLength < Vector2D.EPSILON) {
-            Log.w(TAG, "Femur length too small: $femurLength")
+            logWarn(TAG, "Femur length too small: $femurLength")
             return OffsetComponents(0f, KneeAlignment.NEUTRAL, horizontalOffset, femurLength)
         }
 
         // Normalize offset by femur length
         val normalizedOffset = horizontalOffset / femurLength
 
-        Log.d(TAG, "  Offset calc: knee.x=${knee.x}, spindle.x=${spindle.x}")
-        Log.d(TAG, "  horizontalOffset=${horizontalOffset}, femurLength=${femurLength}")
-        Log.d(TAG, "  normalizedOffset=${normalizedOffset}")
+        logDebug(TAG, "  Offset calc: knee.x=${knee.x}, spindle.x=${spindle.x}")
+        logDebug(TAG, "  horizontalOffset=${horizontalOffset}, femurLength=${femurLength}")
+        logDebug(TAG, "  normalizedOffset=${normalizedOffset}")
 
         // Determine alignment based on normalized offset
         val alignment = when {

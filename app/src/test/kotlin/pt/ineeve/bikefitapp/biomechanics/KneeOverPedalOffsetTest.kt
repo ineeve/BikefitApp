@@ -77,15 +77,16 @@ class KneeOverPedalOffsetTest {
             PoseLandmarkIndex.RIGHT_KNEE
         }
 
-        val ankleIndex = if (side == BodySide.LEFT) {
-            PoseLandmarkIndex.LEFT_ANKLE
+        // Use FOOT_INDEX instead of ANKLE (foot landmark now used for crank angle)
+        val footIndex = if (side == BodySide.LEFT) {
+            PoseLandmarkIndex.LEFT_FOOT_INDEX
         } else {
-            PoseLandmarkIndex.RIGHT_ANKLE
+            PoseLandmarkIndex.RIGHT_FOOT_INDEX
         }
 
         landmarks[hipIndex] = createLandmark(hipX, hipY, visibility)
         landmarks[kneeIndex] = createLandmark(kneeX, kneeY, visibility)
-        landmarks[ankleIndex] = createLandmark(ankleX, ankleY, visibility)
+        landmarks[footIndex] = createLandmark(ankleX, ankleY, visibility)  // ankleX/Y now used for foot position
 
         return landmarks
     }
@@ -283,15 +284,15 @@ class KneeOverPedalOffsetTest {
 
     @Test
     fun `test crank scale computation from frames`() {
-        // Arrange: Create frames at 3 o'clock with known ankle positions
+        // Arrange: Create frames at 3 o'clock with known foot positions
         val frames = (1..5).map { i ->
             val landmarks = MutableList(PoseLandmarkIndex.LANDMARK_COUNT) {
                 createLandmark(0f, 0f, 1.0f)
             }
-            val ankleIndex = PoseLandmarkIndex.LEFT_ANKLE
+            val footIndex = PoseLandmarkIndex.LEFT_FOOT_INDEX
             val hipIndex = PoseLandmarkIndex.LEFT_HIP
-            // Place ankle at consistent distance from BB
-            landmarks[ankleIndex] = createLandmark(0.5f + 0.1f, 0.6f, 1.0f)  // 0.1 units from BB
+            // Place foot at consistent distance from BB
+            landmarks[footIndex] = createLandmark(0.5f + 0.1f, 0.6f, 1.0f)  // 0.1 units from BB
             landmarks[hipIndex] = createLandmark(0.3f, 0.3f, 1.0f)
             
             PoseFrame(
@@ -433,9 +434,11 @@ class KneeOverPedalOffsetTest {
     fun `test result contains crank geometry metadata`() {
         // Arrange
         val crankScale = 0.1f
+        val frameNumber = 42L
+        val timestampMs = 1234L
         val frame = createPoseFrame(
-            frameNumber = 42L,
-            timestampMs = 1234L,
+            frameNumber = frameNumber,
+            timestampMs = timestampMs,
             hipX = 0.3f, hipY = 0.3f,
             kneeX = 0.6f, kneeY = 0.5f,
             ankleX = 0.5f, ankleY = 0.7f,

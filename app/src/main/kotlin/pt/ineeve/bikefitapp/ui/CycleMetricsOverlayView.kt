@@ -30,6 +30,8 @@ class CycleMetricsOverlayView @JvmOverloads constructor(
     private val cycleCountText: TextView
     private val maxExtensionText: TextView
     private val minFlexionText: TextView
+    private val cadenceText: TextView
+    private val crankAngleText: TextView
 
     init {
         LayoutInflater.from(context).inflate(R.layout.view_cycle_metrics_overlay, this, true)
@@ -40,6 +42,8 @@ class CycleMetricsOverlayView @JvmOverloads constructor(
         cycleCountText = findViewById(R.id.metric_cycles)
         maxExtensionText = findViewById(R.id.metric_max_extension)
         minFlexionText = findViewById(R.id.metric_min_flexion)
+        cadenceText = findViewById(R.id.metric_cadence)
+        crankAngleText = findViewById(R.id.metric_crank_angle)
         
         // Initial state
         reset()
@@ -82,6 +86,20 @@ class CycleMetricsOverlayView @JvmOverloads constructor(
     }
     
     /**
+     * Updates the current cadence.
+     */
+    fun updateCurrentCadence(cadence: Float) {
+        cadenceText.text = String.format(Locale.getDefault(), "%.0f RPM", cadence)
+    }
+    
+    /**
+     * Updates the current crank angle.
+     */
+    fun updateCurrentCrankAngle(angle: Float) {
+        crankAngleText.text = String.format(Locale.getDefault(), "%.0f°", angle)
+    }
+    
+    /**
      * Resets the display to default values.
      */
     fun reset() {
@@ -91,5 +109,7 @@ class CycleMetricsOverlayView @JvmOverloads constructor(
         cycleCountText.text = "0"
         maxExtensionText.text = "--"
         minFlexionText.text = "--"
+        cadenceText.text = "0"
+        crankAngleText.text = "--"
     }
 }

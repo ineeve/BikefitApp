@@ -22,10 +22,6 @@ import kotlin.math.atan2
  */
 object ThreeOClockDetector {
     
-    /** Filter state for angle smoothing and outlier rejection (per body side) */
-    private val filterStateLeft = CrankAngleFilter.FilterState()
-    private val filterStateRight = CrankAngleFilter.FilterState()
-    
     /**
      * Configuration for 3 O'Clock detection.
      */
@@ -35,11 +31,7 @@ object ThreeOClockDetector {
         /** Maximum crank angle in degrees for 3 O'Clock position */
         val crankAngleMaxDegrees: Float = 95f,
         /** Minimum visibility threshold for landmarks */
-        val visibilityThreshold: Float = 0.5f,
-        /** Enable angle filtering and smoothing */
-        val enableAngleFiltering: Boolean = true,
-        /** Configuration for angle filter */
-        val angleFilterConfig: CrankAngleFilter.FilterConfig = CrankAngleFilter.FilterConfig()
+        val visibilityThreshold: Float = 0.5f
     )
     
     /**
@@ -48,9 +40,9 @@ object ThreeOClockDetector {
      * @param frameNumber Frame number where detected
      * @param timestampMs Timestamp in milliseconds
      * @param crankAngleDegrees Calculated crank angle in degrees
-     * @param ankleY Y coordinate of ankle
+     * @param ankleY Y coordinate of foot index (now using foot landmark, kept for backward compatibility)
      * @param hipY Y coordinate of hip
-     * @param yDifference Absolute difference between ankle and hip Y (for legacy logging)
+     * @param yDifference Absolute difference between foot and hip Y (for legacy logging)
      * @param side Which leg was analyzed
      * @param confidence Detection confidence (0-1)
      */
@@ -66,155 +58,152 @@ object ThreeOClockDetector {
     )
     
     /**
-     * Detects if a frame represents approximately the 3 O'Clock position.
+     * Computes raw crank angle for a frame regardless of position.
      * 
-     * Uses crank angle geometry: calculates angle from ankle relative to bottom bracket.
-     * Returns a ThreeOClockEvent if crank angle is within [85°, 95°], null otherwise.
+     * Does NOT apply filtering or range validation; purely geometric calculation
+     * of foot position relative to bottom bracket.
      * 
      * @param frame Pose frame to analyze
      * @param side Which leg to analyze
      * @param calibration Bike calibration with bottom bracket position (required)
+     * @return Crank angle in degrees [0, 360), or null if landmarks invalid or missing
+     */
+    fun computeCrankAngle(
+        frame: PoseFrame,
+        side: BodySide = BodySide.LEFT,
+        calibration: BikeCalibration? = null
+    ): Float? {
+        // Require calibration for crank angle calculation
+        if (calibration?.bottomBracket == null) {
+            android.util.Log.d("ThreeOClockDetector", "computeCrankAngle: calibration missing or bottomBracket null: calibration=$calibration")
+            return null
+        }
+        
+        val footIndex = if (side == BodySide.LEFT) 
+            PoseLandmarkIndex.LEFT_FOOT_INDEX 
+        else 
+            PoseLandmarkIndex.RIGHT_FOOT_INDEX
+        
+        val foot = frame.landmarks[footIndex]
+        
+        // Validate landmark exists and is visible
+        if (foot == null) {
+            android.util.Log.d("ThreeOClockDetector", "computeCrankAngle: foot is NULL for side $side")
+            return null
+        }
+        if (foot.visibility < 0.1f) {
+            android.util.Log.d("ThreeOClockDetector", "computeCrankAngle: foot visibility ${foot.visibility} < 0.1 threshold for side $side")
+            return null
+        }
+        
+        // Calculate crank angle using foot position relative to bottom bracket
+        val bb = calibration.bottomBracket!!
+        val dx = foot.x - bb.x
+        val dy = foot.y - bb.y
+        android.util.Log.d("ThreeOClockDetector", "computeCrankAngle: side=$side, foot=(${foot.x},${foot.y}), bb=(${bb.x},${bb.y}), dx=$dx, dy=$dy")
+        
+        // Negate Y because MediaPipe Y increases downward (image space)
+        val crankAngleRadians = atan2(-dy.toDouble(), dx.toDouble())
+        var crankAngleDegrees = Math.toDegrees(crankAngleRadians).toFloat()
+        
+        // Normalize angle to [0, 360)
+        if (crankAngleDegrees < 0) crankAngleDegrees += 360f
+        
+        android.util.Log.d("ThreeOClockDetector", "computeCrankAngle SUCCESS: side=$side, angle=$crankAngleDegrees°, foot.vis=${foot.visibility}")
+        return crankAngleDegrees
+    }
+    
+    /**
+     * Detects if a frame represents approximately the 3 O'Clock position.
+     *
+     * Uses a pre-computed crank angle from [CrankAngleTracker] (elliptical model) if
+     * provided, otherwise falls back to raw atan2 geometry from foot position relative
+     * to the bottom bracket.
+     *
+     * Returns a ThreeOClockEvent if crank angle is within [85°, 95°], null otherwise.
+     *
+     * @param frame Pose frame to analyze
+     * @param side Which leg to analyze
+     * @param calibration Bike calibration with bottom bracket position (required)
      * @param config Detection configuration
+     * @param modelCrankAngle Pre-computed crank angle from the elliptical model (preferred)
      * @return ThreeOClockEvent if detected, null otherwise
      */
     fun detectAtFrame(
         frame: PoseFrame,
         side: BodySide = BodySide.LEFT,
         calibration: BikeCalibration? = null,
-        config: Config = Config()
+        config: Config = Config(),
+        modelCrankAngle: Float? = null
     ): ThreeOClockEvent? {
         // Require calibration for crank angle calculation
         if (calibration?.bottomBracket == null) {
             android.util.Log.d("ThreeOClockDetector", "detectAtFrame: Calibration or bottom bracket is null")
             return null
         }
-        
-        val ankleIndex = if (side == BodySide.LEFT) 
-            PoseLandmarkIndex.LEFT_ANKLE 
-        else 
-            PoseLandmarkIndex.RIGHT_ANKLE
-        
-        val hipIndex = if (side == BodySide.LEFT) 
-            PoseLandmarkIndex.LEFT_HIP 
-        else 
+
+        val footIndex = if (side == BodySide.LEFT)
+            PoseLandmarkIndex.LEFT_FOOT_INDEX
+        else
+            PoseLandmarkIndex.RIGHT_FOOT_INDEX
+
+        val hipIndex = if (side == BodySide.LEFT)
+            PoseLandmarkIndex.LEFT_HIP
+        else
             PoseLandmarkIndex.RIGHT_HIP
-        
-        val ankle = frame.landmarks[ankleIndex]
+
+        val foot = frame.landmarks[footIndex]
         val hip = frame.landmarks[hipIndex]
-        
+
         // Validate landmarks exist and are visible
-        if (ankle == null || hip == null) {
-            android.util.Log.d("ThreeOClockDetector", "detectAtFrame: ankle or hip is null for frame ${frame.frameNumber}, side $side")
+        if (foot == null || hip == null) {
             return null
         }
-        if (ankle.visibility < config.visibilityThreshold) {
-            android.util.Log.d("ThreeOClockDetector", "detectAtFrame: ankle visibility ${ankle.visibility} < threshold ${config.visibilityThreshold} at frame ${frame.frameNumber}, side $side")
+        if (foot.visibility < config.visibilityThreshold || hip.visibility < config.visibilityThreshold) {
             return null
         }
-        if (hip.visibility < config.visibilityThreshold) {
-            android.util.Log.d("ThreeOClockDetector", "detectAtFrame: hip visibility ${hip.visibility} < threshold ${config.visibilityThreshold} at frame ${frame.frameNumber}, side $side")
-            return null
+
+        // Use model angle if provided, otherwise compute via atan2 (raw fallback)
+        val crankAngle = modelCrankAngle ?: run {
+            val bb = calibration.bottomBracket!!
+            val dx = foot.x - bb.x
+            val dy = foot.y - bb.y
+            val crankAngleRadians = atan2(-dy.toDouble(), dx.toDouble())
+            var deg = Math.toDegrees(crankAngleRadians).toFloat()
+            if (deg < 0) deg += 360f
+            deg
         }
-        
-        // Calculate crank angle using ankle position relative to bottom bracket
-        // In MediaPipe coordinates: Y increases downward, X increases right
-        //
-        // Standard crank angle notation:
-        // - 0° / 360° = 3 o'clock (right, horizontal)
-        // - 90° = 6 o'clock (down, bottom)
-        // - 180° = 9 o'clock (left, horizontal)
-        // - 270° = 12 o'clock (up, top)
-        val bb = calibration.bottomBracket!!
-        android.util.Log.d("ThreeOClockDetector", "detectAtFrame: frame ${frame.frameNumber}, side $side - BB position: x=${String.format("%.4f", bb.x)}, y=${String.format("%.4f", bb.y)}")
-        android.util.Log.d("ThreeOClockDetector", "detectAtFrame: frame ${frame.frameNumber}, side $side - Ankle position: x=${String.format("%.4f", ankle.x)}, y=${String.format("%.4f", ankle.y)}, visibility=${String.format("%.3f", ankle.visibility)}")
-        android.util.Log.d("ThreeOClockDetector", "detectAtFrame: frame ${frame.frameNumber}, side $side - Hip position: x=${String.format("%.4f", hip.x)}, y=${String.format("%.4f", hip.y)}, visibility=${String.format("%.3f", hip.visibility)}")
-        
-        val dx = ankle.x - bb.x
-        val dy = ankle.y - bb.y
-        android.util.Log.d("ThreeOClockDetector", "detectAtFrame: frame ${frame.frameNumber}, side $side - Vector from BB to ankle: dx=${String.format("%.4f", dx)}, dy=${String.format("%.4f", dy)}")
-        android.util.Log.d("ThreeOClockDetector", "detectAtFrame: frame ${frame.frameNumber}, side $side - Distance from BB: ${String.format("%.4f", kotlin.math.sqrt((dx * dx + dy * dy).toDouble()))}")
-        
-        // Negate Y because MediaPipe Y increases downward (image space), but crank angles need standard Cartesian orientation
-        // This ensures: 3 o'clock (right, +X)=0°, 6 o'clock (down, +Y)=90°, 9 o'clock (left, -X)=180°, 12 o'clock (up, -Y)=270°
-        val crankAngleRadians = atan2(-dy.toDouble(), dx.toDouble())
-        android.util.Log.d("ThreeOClockDetector", "detectAtFrame: frame ${frame.frameNumber}, side $side - atan2(dy=$dy, dx=$dx) = ${String.format("%.4f", crankAngleRadians)} radians")
-        
-        var crankAngleDegrees = Math.toDegrees(crankAngleRadians).toFloat()
-        android.util.Log.d("ThreeOClockDetector", "detectAtFrame: frame ${frame.frameNumber}, side $side - Before normalization: crankAngleDegrees=${String.format("%.2f", crankAngleDegrees)}°")
-        
-        // Normalize angle to [0, 360)
-        if (crankAngleDegrees < 0) crankAngleDegrees += 360f
-        android.util.Log.d("ThreeOClockDetector", "detectAtFrame: frame ${frame.frameNumber}, side $side - After normalization: crankAngleDegrees=${String.format("%.2f", crankAngleDegrees)}°")
-        
-        // Apply angle filtering if enabled
-        var filteredAngle = crankAngleDegrees
-        var angleWasFiltered = false
-        var filterOutlier = false
-        
-        if (config.enableAngleFiltering) {
-            val filterState = if (side == BodySide.LEFT) filterStateLeft else filterStateRight
-            val filterResult = CrankAngleFilter.filterAngle(crankAngleDegrees, filterState, config.angleFilterConfig)
-            
-            angleWasFiltered = filterResult.isOutlier
-            filterOutlier = filterResult.isOutlier
-            
-            if (filterResult.isValid && filterResult.angle != null) {
-                filteredAngle = filterResult.angle
-            }
-            
-            if (angleWasFiltered) {
-                val delta = filterResult.angleDelta ?: 0f
-                val lastValid = filterState.lastValidAngle ?: 0f
-                val smoothed = filterState.smoothedAngle ?: 0f
-                android.util.Log.d("ThreeOClockDetector", "detectAtFrame: OUTLIER REJECTED at frame ${frame.frameNumber}, side $side, raw=$crankAngleDegrees°, delta=$delta° (threshold=${config.angleFilterConfig.maxAngleChangePerFrame}°), lastValid=$lastValid°, smoothed=$smoothed°")
-                return null  // Skip outlier frames
-            }
+
+        // Check if crank angle is in the 3 o'clock range
+        val distanceToTarget = abs(crankAngle - 90f).let { d ->
+            if (d > 180f) 360f - d else d  // Handle wrap-around
         }
-        
-        // For 3 o'clock detection, check if crank angle is in the 3 o'clock range [85°, 95°]
-        // Standard crank angle notation:
-        // - 0° / 360° = 3 o'clock (right, horizontal)
-        // - 90° = 6 o'clock (down, bottom)
-        // - 180° = 9 o'clock (left, horizontal)
-        // - 270° = 12 o'clock (up, top)
-        
-        // Check if we're near 90° (horizontal/3 o'clock position)
-        var normalizedAngle = filteredAngle
-        var distanceToTarget: Float
-        
-        if (filteredAngle <= 180f) {
-            distanceToTarget = abs(filteredAngle - 90f)
-        } else {
-            distanceToTarget = abs(filteredAngle - 90f)
-        }
-        
-        val tolerance = (config.crankAngleMaxDegrees - 90f)  // 5° tolerance
+        val tolerance = config.crankAngleMaxDegrees - 90f  // 5° tolerance
         val isNearTarget = distanceToTarget <= tolerance
-        
-        // For legacy logging, also calculate Y difference
-        val yDifference = abs(ankle.y - hip.y)
-        
-        // Log the detected angle
-        val filterLog = if (angleWasFiltered) " (filtered from $crankAngleDegrees°)" else ""
-        android.util.Log.d("ThreeOClockDetector", "detectAtFrame: frame ${frame.frameNumber}, side $side, crankAngle=$filteredAngle°$filterLog, distanceFrom90=$distanceToTarget°, ankle.y=${ankle.y}, hip.y=${hip.y}, yDiff=$yDifference, isNear90=$isNearTarget")
-        
-        // Check if crank is approximately at 3 o'clock (within ±5° of 90°)
+
+        val yDifference = abs(foot.y - hip.y)
+
+        android.util.Log.d("ThreeOClockDetector",
+            "detectAtFrame: frame ${frame.frameNumber}, side $side, crankAngle=${String.format("%.1f", crankAngle)}°, " +
+            "distanceFrom90=${String.format("%.1f", distanceToTarget)}°, isNear3OClock=$isNearTarget" +
+            if (modelCrankAngle != null) " [model]" else " [atan2 fallback]")
+
         if (!isNearTarget) {
-            android.util.Log.d("ThreeOClockDetector", "detectAtFrame: crankAngle $filteredAngle° not near 3 o'clock (distance=$distanceToTarget° > tolerance=$tolerance°)")
             return null
         }
-        
-        // Calculate confidence based on how close angle is to exactly 90° (3 o'clock)
-        // Maximum confidence at 90°, decreases away from 3 o'clock
+
+        // Confidence: closer to 90° = higher confidence
         val confidence = 1.0f - (distanceToTarget / tolerance).coerceIn(0f, 1f)
-        
-        android.util.Log.d("ThreeOClockDetector", "detectAtFrame: DETECTED 3 O'Clock at frame ${frame.frameNumber}, side $side, crankAngle=$filteredAngle°, confidence=$confidence")
-        
+
+        android.util.Log.d("ThreeOClockDetector",
+            "detectAtFrame: DETECTED 3 O'Clock at frame ${frame.frameNumber}, side $side, " +
+            "crankAngle=${String.format("%.1f", crankAngle)}°, confidence=${String.format("%.2f", confidence)}")
+
         return ThreeOClockEvent(
             frameNumber = frame.frameNumber,
             timestampMs = frame.timestampMs,
-            crankAngleDegrees = filteredAngle,  // Use filtered angle for analysis
-            ankleY = ankle.y,
+            crankAngleDegrees = crankAngle,
+            ankleY = foot.y,
             hipY = hip.y,
             yDifference = yDifference,
             side = side,
@@ -223,15 +212,13 @@ object ThreeOClockDetector {
     }
     
     /**
-     * Resets angle filter state (useful when restarting video analysis).
-     * 
-     * Call this when starting a new video or analysis session to clear
-     * accumulated filter state from previous data.
+     * Resets detector state (useful when restarting video analysis).
+     *
+     * Kept for API compatibility. The ThreeOClockDetector no longer maintains
+     * internal filter state; it consumes pre-computed angles from CrankAngleTracker.
      */
     fun resetAngleFilter() {
-        CrankAngleFilter.reset(filterStateLeft)
-        CrankAngleFilter.reset(filterStateRight)
-        android.util.Log.d("ThreeOClockDetector", "Angle filter state reset for both sides")
+        android.util.Log.d("ThreeOClockDetector", "ThreeOClockDetector reset")
     }
     
     /**

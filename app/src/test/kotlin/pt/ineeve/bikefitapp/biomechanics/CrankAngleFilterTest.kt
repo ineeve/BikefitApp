@@ -24,7 +24,9 @@ class CrankAngleFilterTest {
         
         assertTrue(result.isValid)
         assertFalse(result.isOutlier)
-        assertEquals(90f, result.angle, 0.01f)
+        assertNotNull(result.angle)
+        assertEquals(90f, result.angle!!, 0.01f)
+        assertNotNull(filterState.smoothedAngle)
         assertEquals(90f, filterState.smoothedAngle!!, 0.01f)
     }
     
@@ -222,4 +224,103 @@ class CrankAngleFilterTest {
         val delta = CrankAngleFilter.calculateAngleDelta(90f, 90f)
         assertEquals(0f, delta, 0.01f)
     }
+    
+    // ==================== Recovery Mode Tests ====================
+    
+    @Test
+    fun `recovery mode activates after consecutive outliers`() {
+        val config = CrankAngleFilter.FilterConfig(
+            maxAngleChangePerFrame = 30f,
+            consecutiveOutlierThreshold = 3
+        )
+        
+        CrankAngleFilter.filterAngle(90f, filterState, config)
+        assertFalse(filterState.recoveryMode)
+        
+        // Trigger 3 consecutive outliers to activate recovery
+        CrankAngleFilter.filterAngle(150f, filterState, config)  // Outlier 1
+        assertFalse(filterState.recoveryMode)
+        assertEquals(1, filterState.consecutiveOutliers)
+        
+        CrankAngleFilter.filterAngle(200f, filterState, config)  // Outlier 2
+        assertFalse(filterState.recoveryMode)
+        assertEquals(2, filterState.consecutiveOutliers)
+        
+        CrankAngleFilter.filterAngle(250f, filterState, config)  // Outlier 3 - activates recovery
+        assertTrue(filterState.recoveryMode)
+        assertEquals(3, filterState.consecutiveOutliers)
+    }
+    
+    @Test
+    fun `recovery mode accepts larger threshold angles`() {
+        val config = CrankAngleFilter.FilterConfig(
+            maxAngleChangePerFrame = 30f,
+            velocityThresholdMultiplier = 1.8f,
+            recoveryThresholdMultiplier = 3.5f,
+            consecutiveOutlierThreshold = 3
+        )
+        
+        CrankAngleFilter.filterAngle(90f, filterState, config)
+        
+        // Force into recovery mode
+        CrankAngleFilter.filterAngle(150f, filterState, config)
+        CrankAngleFilter.filterAngle(200f, filterState, config)
+        CrankAngleFilter.filterAngle(250f, filterState, config)
+        
+        assertTrue(filterState.recoveryMode)
+        
+        // In recovery mode, a large angle should be accepted if within recovery threshold
+        // This prevents filter lock-up
+        val result = CrankAngleFilter.filterAngle(300f, filterState, config)
+        assertTrue(result.isValid)  // Should be valid now with recovery threshold
+    }
+    
+    @Test
+    fun `recovery mode resets when valid measurement received`() {
+        val config = CrankAngleFilter.FilterConfig(
+            maxAngleChangePerFrame = 30f,
+            consecutiveOutlierThreshold = 2
+        )
+        
+        CrankAngleFilter.filterAngle(90f, filterState, config)
+        CrankAngleFilter.filterAngle(150f, filterState, config)  // Outlier 1
+        CrankAngleFilter.filterAngle(200f, filterState, config)  // Outlier 2 - activates recovery
+        
+        assertTrue(filterState.recoveryMode)
+        assertEquals(2, filterState.consecutiveOutliers)
+        
+        // Valid measurement should exit recovery mode
+        CrankAngleFilter.filterAngle(110f, filterState, config)  // 20° from 90°, valid
+        assertFalse(filterState.recoveryMode)
+        assertEquals(0, filterState.consecutiveOutliers)
+    }
+    
+    // ==================== Velocity Estimation Tests ====================
+    
+    @Test
+    fun `velocity estimation uses median to reject spikes`() {
+        val config = CrankAngleFilter.FilterConfig(
+            maxAngleChangePerFrame = 45f,
+            velocityHistorySize = 5
+        )
+        
+        CrankAngleFilter.filterAngle(0f, filterState, config)
+        CrankAngleFilter.filterAngle(10f, filterState, config)
+        CrankAngleFilter.filterAngle(20f, filterState, config)
+        CrankAngleFilter.filterAngle(30f, filterState, config)
+        CrankAngleFilter.filterAngle(40f, filterState, config)
+        
+        // Recent deltas: [10, 10, 10, 10, 10]
+        val velocity = CrankAngleFilter.estimateAngularVelocity(filterState, config)
+        assertEquals(10f, velocity, 0.1f)
+        
+        // Add an outlier (recorded at 0.5x weight)
+        filterState.recentDeltas.add(50f * 0.5f)
+        
+        // Velocity should still be ~10 (median filters out the outlier spike)
+        val velocityAfterOutlier = CrankAngleFilter.estimateAngularVelocity(filterState, config)
+        assertTrue(velocityAfterOutlier < 15f)  // Should be much closer to 10 than to 50
+    }
 }
+
+
