@@ -3,7 +3,7 @@ package pt.ineeve.bikefitapp.biomechanics
 /**
  * Wrapper for applying Savitzky-Golay filtering to joint angle time series.
  * 
- * This class maintains separate filters for different angle types (knee, hip, ankle, torso)
+ * This class maintains separate filters for different angle types (knee, hip, ankle, torso, toe, heel)
  * and applies smoothing to reduce noise while preserving extrema shape and ensuring
  * zero phase shift.
  * 
@@ -33,6 +33,8 @@ class JointAngleFilter(
     private val hipFilter = SavitzkyGolayFilter(windowSize, polynomialOrder)
     private val ankleFilter = SavitzkyGolayFilter(windowSize, polynomialOrder)
     private val torsoFilter = SavitzkyGolayFilter(windowSize, polynomialOrder)
+    private val toeFilter = SavitzkyGolayFilter(windowSize, polynomialOrder)
+    private val heelFilter = SavitzkyGolayFilter(windowSize, polynomialOrder)
     
     /**
      * Filters knee angle measurement.
@@ -79,6 +81,34 @@ class JointAngleFilter(
     }
     
     /**
+     * Filters toe (foot index) angle measurement.
+     * 
+     * Note: Toe angle calculation is not yet implemented in the codebase.
+     * This method is provided for future use when toe angle calculators are added.
+     * 
+     * @param angle Raw toe angle in degrees, or null if not available
+     * @return Smoothed toe angle in degrees, or null if buffer not full or input is null
+     */
+    fun filterToeAngle(angle: Float?): Float? {
+        if (angle == null) return null
+        return toeFilter.addSample(angle.toDouble())?.toFloat()
+    }
+    
+    /**
+     * Filters heel angle measurement.
+     * 
+     * Note: Heel angle calculation is not yet implemented in the codebase.
+     * This method is provided for future use when heel angle calculators are added.
+     * 
+     * @param angle Raw heel angle in degrees, or null if not available
+     * @return Smoothed heel angle in degrees, or null if buffer not full or input is null
+     */
+    fun filterHeelAngle(angle: Float?): Float? {
+        if (angle == null) return null
+        return heelFilter.addSample(angle.toDouble())?.toFloat()
+    }
+    
+    /**
      * Resets all filters, clearing their internal state.
      * Call this when starting a new analysis session.
      */
@@ -87,5 +117,7 @@ class JointAngleFilter(
         hipFilter.reset()
         ankleFilter.reset()
         torsoFilter.reset()
+        toeFilter.reset()
+        heelFilter.reset()
     }
 }

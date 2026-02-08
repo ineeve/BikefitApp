@@ -106,17 +106,21 @@ class JointAngleFilterTest {
     fun `reset clears all filter states`() {
         val filter = JointAngleFilter(windowSize = 5, polynomialOrder = 2)
         
-        // Fill all buffers
+        // Fill all buffers including toe and heel
         for (i in 1..5) {
             filter.filterKneeAngle(100f + i)
             filter.filterHipAngle(50f + i)
             filter.filterAnkleAngle(20f + i)
             filter.filterTorsoAngle(45f + i)
+            filter.filterToeAngle(10f + i)
+            filter.filterHeelAngle(15f + i)
         }
         
         // Should have non-null results
         assertNotNull(filter.filterKneeAngle(106f))
         assertNotNull(filter.filterHipAngle(56f))
+        assertNotNull(filter.filterToeAngle(16f))
+        assertNotNull(filter.filterHeelAngle(21f))
         
         // Reset
         filter.reset()
@@ -126,6 +130,8 @@ class JointAngleFilterTest {
         assertNull(filter.filterHipAngle(50f))
         assertNull(filter.filterAnkleAngle(20f))
         assertNull(filter.filterTorsoAngle(45f))
+        assertNull(filter.filterToeAngle(10f))
+        assertNull(filter.filterHeelAngle(15f))
     }
 
     @Test
@@ -183,6 +189,111 @@ class JointAngleFilterTest {
             smoothFilter.filterKneeAngle(100f + i)
         }
         assertNotNull(smoothFilter.filterKneeAngle(121f))
+    }
+
+    @Test
+    fun `filter handles toe angle measurements`() {
+        val filter = JointAngleFilter(windowSize = 5, polynomialOrder = 2)
+        
+        // Fill buffer with constant toe angle values
+        for (i in 1..4) {
+            assertNull(filter.filterToeAngle(20f))
+        }
+        
+        // Should return smoothed value once buffer is full
+        val smoothed = filter.filterToeAngle(20f)
+        assertNotNull(smoothed)
+        
+        // Continue with constant values - should converge to the constant
+        var lastResult: Float? = null
+        for (i in 1..10) {
+            val result = filter.filterToeAngle(20f)
+            if (result != null) {
+                lastResult = result
+            }
+        }
+        
+        // After enough samples, should be close to constant value
+        assertNotNull(lastResult)
+        assertEquals(20f, lastResult!!, 0.5f,
+            "Toe angle filter should converge to constant values")
+    }
+
+    @Test
+    fun `filter handles heel angle measurements`() {
+        val filter = JointAngleFilter(windowSize = 5, polynomialOrder = 2)
+        
+        // Fill buffer with constant heel angle values
+        for (i in 1..4) {
+            assertNull(filter.filterHeelAngle(40f))
+        }
+        
+        // Should return smoothed value once buffer is full
+        val smoothed = filter.filterHeelAngle(40f)
+        assertNotNull(smoothed)
+        
+        // Continue with constant values - should converge to the constant
+        var lastResult: Float? = null
+        for (i in 1..10) {
+            val result = filter.filterHeelAngle(40f)
+            if (result != null) {
+                lastResult = result
+            }
+        }
+        
+        // After enough samples, should be close to constant value
+        assertNotNull(lastResult)
+        assertEquals(40f, lastResult!!, 0.5f,
+            "Heel angle filter should converge to constant values")
+    }
+
+    @Test
+    fun `toe and heel filters maintain independent state`() {
+        val filter = JointAngleFilter(windowSize = 5, polynomialOrder = 2)
+        
+        // Add different patterns to toe and heel
+        val toeValues = mutableListOf<Float?>()
+        val heelValues = mutableListOf<Float?>()
+        
+        for (i in 0..10) {
+            val toeResult = filter.filterToeAngle(10f + i)  // Increasing
+            val heelResult = filter.filterHeelAngle(30f - i)  // Decreasing
+            
+            toeValues.add(toeResult)
+            heelValues.add(heelResult)
+        }
+        
+        // After buffer fills, both should have values but they should be different
+        val toeValue = toeValues.last()
+        val heelValue = heelValues.last()
+        
+        assertNotNull(toeValue)
+        assertNotNull(heelValue)
+        assertNotEquals(toeValue, heelValue,
+            "Toe and heel filters should maintain independent state")
+    }
+
+    @Test
+    fun `all six angle types work together`() {
+        val filter = JointAngleFilter(windowSize = 5, polynomialOrder = 2)
+        
+        // Fill buffers for all six angle types
+        for (i in 1..5) {
+            filter.filterKneeAngle(150f + i)
+            filter.filterHipAngle(50f + i)
+            filter.filterAnkleAngle(20f + i)
+            filter.filterTorsoAngle(45f + i)
+            filter.filterToeAngle(10f + i)
+            filter.filterHeelAngle(15f + i)
+        }
+        
+        // All should return non-null values
+        assertNotNull(filter.filterKneeAngle(156f))
+        assertNotNull(filter.filterHipAngle(56f))
+        assertNotNull(filter.filterAnkleAngle(26f))
+        assertNotNull(filter.filterTorsoAngle(51f))
+        assertNotNull(filter.filterToeAngle(16f))
+        assertNotNull(filter.filterHeelAngle(21f))
     }
 
     /**
