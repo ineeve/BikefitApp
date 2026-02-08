@@ -13,6 +13,9 @@ enum class BikeReferencePointType {
     /** Center of the bottom bracket (crank axle) */
     BOTTOM_BRACKET,
     
+    /** Pedal spindle position (marked by tapping) */
+    SPINDLE,
+    
     /** Handlebar grip position */
     HANDLEBAR
 }
@@ -73,6 +76,7 @@ data class BikeReferencePoint(
  * @param saddleTop Top of the saddle position
  * @param bottomBracket Center of bottom bracket position
  * @param handlebar Handlebar grip position
+ * @param spindle Pedal spindle position
  * @param crankLengthMm Crank length in millimeters (typically 165-180mm)
  * @param timestampMs When the calibration was performed
  */
@@ -80,17 +84,18 @@ data class BikeCalibration(
     val saddleTop: BikeReferencePoint? = null,
     val bottomBracket: BikeReferencePoint? = null,
     val handlebar: BikeReferencePoint? = null,
+    val spindle: BikeReferencePoint? = null,
     val crankLengthMm: Int? = null,
     val timestampMs: Long = System.currentTimeMillis()
 ) {
     /**
-     * Returns true if all reference points and crank length have been set.
+     * Returns true if all reference points, crank length, and spindle have been set.
      */
     val isComplete: Boolean
-        get() = saddleTop != null && bottomBracket != null && handlebar != null && crankLengthMm != null
+        get() = saddleTop != null && bottomBracket != null && handlebar != null && spindle != null && crankLengthMm != null
     
     /**
-     * Returns true if all three reference points have been set (excluding crank length).
+     * Returns true if all three reference points have been set (excluding crank length and spindle).
      */
     val hasAllPoints: Boolean
         get() = saddleTop != null && bottomBracket != null && handlebar != null
@@ -99,22 +104,24 @@ data class BikeCalibration(
      * Returns the number of points that have been set.
      */
     val pointCount: Int
-        get() = listOfNotNull(saddleTop, bottomBracket, handlebar).size
+        get() = listOfNotNull(saddleTop, bottomBracket, handlebar, spindle).size
     
     /**
      * Returns a list of all set reference points.
      */
     fun getPoints(): List<BikeReferencePoint> {
-        return listOfNotNull(saddleTop, bottomBracket, handlebar)
+        return listOfNotNull(saddleTop, bottomBracket, spindle, handlebar)
     }
     
     /**
      * Returns the next point type that needs to be set, or null if complete.
+     * Order: Saddle, Bottom Bracket, Spindle, Handlebar
      */
     fun getNextPointType(): BikeReferencePointType? {
         return when {
             saddleTop == null -> BikeReferencePointType.SADDLE_TOP
             bottomBracket == null -> BikeReferencePointType.BOTTOM_BRACKET
+            spindle == null -> BikeReferencePointType.SPINDLE
             handlebar == null -> BikeReferencePointType.HANDLEBAR
             else -> null
         }
@@ -127,8 +134,16 @@ data class BikeCalibration(
         return when (point.type) {
             BikeReferencePointType.SADDLE_TOP -> copy(saddleTop = point)
             BikeReferencePointType.BOTTOM_BRACKET -> copy(bottomBracket = point)
+            BikeReferencePointType.SPINDLE -> copy(spindle = point)
             BikeReferencePointType.HANDLEBAR -> copy(handlebar = point)
         }
+    }
+    
+    /**
+     * Returns a copy with the spindle position set.
+     */
+    fun withSpindle(spindle: BikeReferencePoint): BikeCalibration {
+        return copy(spindle = spindle)
     }
     
     /**
@@ -275,6 +290,58 @@ data class BikeCalibration(
             return "Handlebar appears to be too close to saddle"
         }
         
+        // If spindle is marked, validate it against geometric estimate
+        if (spindle != null) {
+            val validationError = validateSpindlePosition()
+            if (validationError != null) {
+                return validationError
+            }
+        }
+        
+        return null
+    }
+    
+    /**
+     * Estimates the spindle X position geometrically (for validation purposes).
+     * This is based on the assumption that at 3 o'clock, the crank extends forward
+     * from the bottom bracket by the crank length distance.
+     * 
+     * @return Estimated spindle X position, or null if BB or crank length not set
+     */
+    fun estimateGeometricSpindleX(): Float? {
+        val bb = bottomBracket ?: return null
+        val crankMm = crankLengthMm ?: return null
+        val saddleToBBDistance = getSaddleToBottomBracketDistance() ?: return null
+        
+        // Estimate spindle as: BB + (crank_length / typical_bike_size) * saddle_to_BB_distance
+        // This assumes crank extends forward from BB at 3 o'clock position
+        val estimatedBikeSizeMm = 750f
+        val crankLengthNormalized = (crankMm.toFloat() / estimatedBikeSizeMm) * saddleToBBDistance
+        
+        return bb.x + crankLengthNormalized
+    }
+    
+    /**
+     * Validates the marked spindle position against geometric estimate.
+     * Tolerance is ±10% of the geometric estimate offset from BB.
+     * 
+     * @return Error message if validation fails, null if valid
+     */
+    fun validateSpindlePosition(): String? {
+        val markedSpindle = spindle?.x ?: return null
+        val bb = bottomBracket ?: return "Cannot validate spindle without bottom bracket"
+        
+        val geometricSpindle = estimateGeometricSpindleX() 
+            ?: return "Cannot estimate spindle position without crank length"
+        
+        val offset = kotlin.math.abs(markedSpindle - geometricSpindle)
+        val geometricOffset = kotlin.math.abs(geometricSpindle - bb.x)
+        val tolerance = geometricOffset * 0.10f  // ±10%
+        
+        if (offset > tolerance) {
+            return "Spindle position is too far from estimated position (±${(tolerance * 100).toInt()}% tolerance)"
+        }
+        
         return null
     }
     
@@ -294,6 +361,9 @@ sealed class CalibrationState {
     /** Waiting for user to tap bottom bracket */
     object WaitingForBottomBracket : CalibrationState()
     
+    /** Waiting for user to mark pedal spindle position */
+    object WaitingForSpindle : CalibrationState()
+    
     /** Waiting for user to tap handlebar */
     object WaitingForHandlebar : CalibrationState()
     
@@ -311,9 +381,10 @@ sealed class CalibrationState {
      */
     fun getInstructionText(): String {
         return when (this) {
-            is WaitingForSaddle -> "Tap the top of the saddle"
-            is WaitingForBottomBracket -> "Tap the center of the bottom bracket"
-            is WaitingForHandlebar -> "Tap the handlebar grip"
+            is WaitingForSaddle -> "Step 1/4: Tap the top of the saddle"
+            is WaitingForBottomBracket -> "Step 2/4: Tap the center of the bottom bracket"
+            is WaitingForSpindle -> "Step 3/4: Tap the pedal spindle"
+            is WaitingForHandlebar -> "Step 4/4: Tap the handlebar grip"
             is WaitingForCrankLength -> "Enter crank length (mm)"
             is ReadyToConfirm -> "Review and confirm calibration"
             is Confirmed -> "Calibration complete"
@@ -327,6 +398,7 @@ sealed class CalibrationState {
         return when (this) {
             is WaitingForSaddle -> BikeReferencePointType.SADDLE_TOP
             is WaitingForBottomBracket -> BikeReferencePointType.BOTTOM_BRACKET
+            is WaitingForSpindle -> BikeReferencePointType.SPINDLE
             is WaitingForHandlebar -> BikeReferencePointType.HANDLEBAR
             else -> null
         }

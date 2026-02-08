@@ -99,8 +99,10 @@ class CalibrationActivity : AppCompatActivity() {
                 magnifiedPreviewView.show()
             }
             
-            // Update magnified view position to follow the point
-            magnifiedPreviewView.setMagnificationPoint(normalizedX, normalizedY)
+            // Update magnified view position to follow the point (if shown)
+            if (isDragging && magnifiedPreviewView.visibility == View.VISIBLE) {
+                magnifiedPreviewView.setMagnificationPoint(normalizedX, normalizedY)
+            }
             
             // Update the calibration with the new position
             onPointAdjusted(pointType, normalizedX, normalizedY)
@@ -108,9 +110,11 @@ class CalibrationActivity : AppCompatActivity() {
         
         overlayView.onDragEndedListener = {
             // Hide magnified view when dragging ends
-            if (isDragging) {
+            if (isDragging && magnifiedPreviewView.visibility == View.VISIBLE) {
                 isDragging = false
                 magnifiedPreviewView.hide()
+            } else if (isDragging) {
+                isDragging = false
             }
         }
 
@@ -177,20 +181,31 @@ class CalibrationActivity : AppCompatActivity() {
 
         Log.d(TAG, "Point tapped: $pointType at ($normalizedX, $normalizedY)")
 
-        // Create the reference point
-        val point = BikeReferencePoint(
-            type = pointType,
-            x = normalizedX,
-            y = normalizedY
-        )
+        // Handle spindle marking specially (only X coordinate)
+        if (pointType == BikeReferencePointType.SPINDLE) {
+            val point = BikeReferencePoint(
+                type = pointType,
+                x = normalizedX,
+                y = normalizedY
+            )
+            calibration = calibration.withPoint(point)
+        } else {
+            // Create the reference point for other point types
+            val point = BikeReferencePoint(
+                type = pointType,
+                x = normalizedX,
+                y = normalizedY
+            )
 
-        // Update calibration
-        calibration = calibration.withPoint(point)
+            // Update calibration
+            calibration = calibration.withPoint(point)
+        }
 
         // Advance to next state
         state = when (pointType) {
             BikeReferencePointType.SADDLE_TOP -> CalibrationState.WaitingForBottomBracket
-            BikeReferencePointType.BOTTOM_BRACKET -> CalibrationState.WaitingForHandlebar
+            BikeReferencePointType.BOTTOM_BRACKET -> CalibrationState.WaitingForSpindle
+            BikeReferencePointType.SPINDLE -> CalibrationState.WaitingForHandlebar
             BikeReferencePointType.HANDLEBAR -> CalibrationState.ReadyToConfirm
         }
 
@@ -223,6 +238,13 @@ class CalibrationActivity : AppCompatActivity() {
     private fun onConfirmClicked() {
         if (!calibration.isComplete) {
             Toast.makeText(this, R.string.calibration_incomplete, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Validate spindle position
+        val validationError = calibration.validate()
+        if (validationError != null) {
+            Toast.makeText(this, validationError, Toast.LENGTH_LONG).show()
             return
         }
 

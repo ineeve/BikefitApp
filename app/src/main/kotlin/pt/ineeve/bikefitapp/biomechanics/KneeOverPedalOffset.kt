@@ -1,9 +1,12 @@
 package pt.ineeve.bikefitapp.biomechanics
 
+import android.util.Log
+import pt.ineeve.bikefitapp.calibration.BikeCalibration
 import pt.ineeve.bikefitapp.pose.Landmark
 import pt.ineeve.bikefitapp.pose.PoseFrame
 import pt.ineeve.bikefitapp.pose.PoseLandmarkIndex
 import kotlin.math.abs
+import kotlin.math.atan2
 
 /**
  * Represents the direction of knee position relative to pedal.
@@ -20,15 +23,25 @@ enum class KneeAlignment {
 /**
  * Result of knee-over-pedal offset calculation.
  * 
+ * KOPS is computed as the horizontal distance between the knee landmark and the pedal
+ * spindle when the crank is horizontal (3 o'clock position). The spindle position is
+ * derived from the bottom bracket location and crank length scaled to image space using
+ * the ankle–BB radius. The distance is normalized by femur length to produce a
+ * scale-independent metric.
+ * 
  * @param normalizedOffset Horizontal offset normalized by femur length (dimensionless)
+ *                         Interpretation: <-0.25 (rearward), -0.10…+0.10 (neutral), >+0.30 (very forward)
  * @param alignment Directional bias of knee position
- * @param rawOffset Raw horizontal distance from knee to ankle/pedal in normalized coordinates
+ * @param rawOffset Raw horizontal distance from knee to spindle in normalized coordinates
  * @param femurLength Length of femur (hip to knee) used for normalization
  * @param side Which leg was analyzed
  * @param frameNumber Frame number where measurement was taken
  * @param timestampMs Timestamp at measurement
  * @param confidence Measurement confidence based on landmark visibility
  * @param isValid Whether the result is valid
+ * @param spindleX X coordinate of pedal spindle (for reference/debugging)
+ * @param crankScale Scale factor applied to crank length (mm → image pixels)
+ * @param computationMethod "crank_geometry" for BB+crank-based, or other method identifier
  */
 data class KneeOverPedalOffsetResult(
     val normalizedOffset: Float,
@@ -39,7 +52,10 @@ data class KneeOverPedalOffsetResult(
     val frameNumber: Long,
     val timestampMs: Long,
     val confidence: Float,
-    val isValid: Boolean
+    val isValid: Boolean,
+    val spindleX: Float = 0f,
+    val crankScale: Float = 0f,
+    val computationMethod: String = "crank_geometry"
 ) {
     companion object {
         /**
@@ -107,64 +123,88 @@ data class KneeOverPedalOffsetSummary(
  * 
  * @param visibilityThreshold Minimum visibility for landmarks
  * @param neutralThreshold Threshold for considering alignment neutral (as fraction of femur)
+ * @param crankAngleMinDegrees Minimum crank angle for 3 o'clock detection (hardcoded 85°)
+ * @param crankAngleMaxDegrees Maximum crank angle for 3 o'clock detection (hardcoded 95°)
+ * @param crankScaleFrameLimit Number of 3 o'clock frames to use for computing crank scale (first 30 frames)
  */
 data class KneeOverPedalOffsetConfig(
     val visibilityThreshold: Float = 0.5f,
-    val neutralThreshold: Float = 0.05f
+    val neutralThreshold: Float = 0.05f,
+    val crankAngleMinDegrees: Float = 85f,
+    val crankAngleMaxDegrees: Float = 95f,
+    val crankScaleFrameLimit: Int = 30
 )
 
 /**
- * Computes normalized knee-over-pedal offset at 3 o'clock crank position.
+ * Computes normalized knee-over-pedal offset at 3 o'clock crank position using crank geometry.
  * 
- * This metric estimates knee position relative to the pedal using a normalized,
- * scale-free distance. The measurement is taken when the crank is at 3 o'clock
- * (horizontal forward position, where the knee is typically most forward).
+ * KOPS is the horizontal distance between the knee joint and the pedal spindle when the
+ * crank is horizontal (3 o'clock position), normalized by femur length for scale invariance.
  * 
- * The offset is normalized by femur length (hip to knee distance) to provide
- * a scale-free metric that can be compared across different body sizes.
+ * Algorithm (crank-geometry based):
+ * 1. Identify frames where crank angle is approximately 90° (horizontal)
+ * 2. Estimate crank angle using ankle position relative to bottom bracket:
+ *    crank_angle = atan2(ankle_y - BB_y, ankle_x - BB_x)
+ * 3. For frames within [85°, 95°], compute spindle position:
+ *    scale = mean(|ankle - BB|) / crank_length_mm (computed from first 30 frames)
+ *    spindle_x = BB_x + crank_length_mm * scale
+ * 4. Calculate knee-spindle offset and normalize by femur length:
+ *    dx = knee_x - spindle_x
+ *    kops_norm = dx / femur_length
+ * 5. Average across all valid crank-horizontal frames
  * 
- * Directional labeling:
- * - FORWARD: Knee is ahead of the pedal (positive offset)
- * - REARWARD: Knee is behind the pedal (negative offset)
- * - NEUTRAL: Knee is aligned with pedal (within threshold)
+ * Requires complete calibration (bottom bracket + crank length) - will fail with warning if unavailable.
  * 
- * Usage:
- * ```
- * // At 3 o'clock position frame
- * val result = KneeOverPedalOffset.computeAtFrame(
- *     frame = poseFrame,
- *     side = BodySide.LEFT
- * )
- * 
- * if (result.isValid) {
- *     println("Normalized offset: ${result.normalizedOffset}")
- *     println("Alignment: ${result.alignment}")
- * }
- * ```
- * 
- * All functions are pure and stateless.
+ * Interpretation ranges (normalized):
+ * - < -0.25: Very rearward
+ * - -0.25 — -0.10: Slightly rearward
+ * - -0.10 — +0.10: Neutral
+ * - +0.10 — +0.30: Forward
+ * - > +0.30: Very forward
  */
 object KneeOverPedalOffset {
+    private const val TAG = "KneeOverPedalOffset"
 
     /**
-     * Computes knee-over-pedal offset at a single frame (assumed to be at 3 o'clock).
+     * Cache for crank scale factor (computed once from first 30 frames).
+     * Immutable holder to avoid synchronization issues.
+     */
+    data class CrankScaleCache(
+        val scale: Float,
+        val frameCount: Int,
+        val isValid: Boolean
+    ) {
+        companion object {
+            val INVALID = CrankScaleCache(1f, 0, false)
+        }
+    }
+
+    /**
+     * Computes knee-over-pedal offset at a single frame using crank geometry.
      * 
-     * The 3 o'clock position is when the crank is horizontal forward.
-     * At this position, we measure:
-     * 1. Horizontal distance from knee to ankle (pedal proxy)
-     * 2. Femur length (hip to knee)
-     * 3. Normalized offset = horizontal distance / femur length
+     * REQUIRES: Complete calibration with bottom bracket and crank length.
+     * Will log warning and return invalid result if calibration incomplete.
      * 
      * @param frame The pose frame at 3 o'clock position
      * @param side Which leg to analyze
+     * @param calibration Bike calibration with BB and crank length
+     * @param crankScale Pre-computed crank scale factor (mm → image pixels)
      * @param config Configuration options
-     * @return Result containing normalized offset and alignment
+     * @return Result containing normalized offset and alignment using crank geometry
      */
     fun computeAtFrame(
         frame: PoseFrame,
         side: BodySide,
+        calibration: BikeCalibration,
+        crankScale: Float,
         config: KneeOverPedalOffsetConfig = KneeOverPedalOffsetConfig()
     ): KneeOverPedalOffsetResult {
+        // Validate calibration
+        if (calibration.bottomBracket == null || calibration.crankLengthMm == null) {
+            Log.w(TAG, "Incomplete calibration: BB=${calibration.bottomBracket != null}, crank=${calibration.crankLengthMm != null}. Cannot compute KOPS.")
+            return KneeOverPedalOffsetResult.invalid(side)
+        }
+
         if (frame.landmarks.size < PoseLandmarkIndex.LANDMARK_COUNT) {
             return KneeOverPedalOffsetResult.invalid(side)
         }
@@ -187,8 +227,32 @@ object KneeOverPedalOffset {
         // Calculate average confidence
         val confidence = (hip.visibility + knee.visibility + ankle.visibility) / 3f
 
-        // Compute the offset
-        val components = computeOffset(hip, knee, ankle, config)
+        // Compute spindle position
+        // Use user-marked spindle if available, otherwise compute geometrically
+        val spindleX = if (calibration.spindle != null) {
+            // Use marked spindle (ground truth from user calibration)
+            calibration.spindle.x
+        } else {
+            // Fallback to geometric estimate: BB_x + crankScale
+            calibration.bottomBracket.x + crankScale
+        }
+        
+        val spindle = Vector2D(
+            spindleX,
+            calibration.bottomBracket.y
+        )
+
+        // Log diagnostic information
+        Log.d(TAG, "KOPS Computation Frame #${frame.frameNumber}:")
+        Log.d(TAG, "  Landmarks: hip=(${hip.x}, ${hip.y}), knee=(${knee.x}, ${knee.y}), ankle=(${ankle.x}, ${ankle.y})")
+        Log.d(TAG, "  Calibration: BB=(${calibration.bottomBracket.x}, ${calibration.bottomBracket.y}), crankLen=${calibration.crankLengthMm}mm")
+        Log.d(TAG, "  CrankScale: $crankScale")
+        Log.d(TAG, "  Spindle: (${spindle.x}, ${spindle.y}) [${if (calibration.spindle != null) "marked" else "geometric"}]")
+
+        // Compute the offset using crank geometry
+        val components = computeOffsetWithSpindle(hip, knee, spindle, config)
+
+        Log.d(TAG, "  FemurLength: ${components.femurLength}, RawOffset: ${components.rawOffset}, NormalizedOffset: ${components.normalizedOffset}, Alignment: ${components.alignment}")
 
         return KneeOverPedalOffsetResult(
             normalizedOffset = components.normalizedOffset,
@@ -199,23 +263,38 @@ object KneeOverPedalOffset {
             frameNumber = frame.frameNumber,
             timestampMs = frame.timestampMs,
             confidence = confidence,
-            isValid = true
+            isValid = true,
+            spindleX = spindle.x,
+            crankScale = crankScale,
+            computationMethod = "crank_geometry"
         )
     }
 
     /**
-     * Computes knee-over-pedal offset from raw landmarks.
+     * Computes knee-over-pedal offset from raw landmarks using crank geometry.
+     * 
+     * REQUIRES: Complete calibration with bottom bracket and crank length.
      * 
      * @param landmarks List of 33 pose landmarks
      * @param side Which leg to analyze
+     * @param calibration Bike calibration with BB and crank length
+     * @param crankScale Pre-computed crank scale factor
      * @param config Configuration options
      * @return Result containing normalized offset and alignment
      */
     fun computeFromLandmarks(
         landmarks: List<Landmark>,
         side: BodySide,
+        calibration: BikeCalibration,
+        crankScale: Float,
         config: KneeOverPedalOffsetConfig = KneeOverPedalOffsetConfig()
     ): KneeOverPedalOffsetResult {
+        // Validate calibration
+        if (calibration.bottomBracket == null || calibration.crankLengthMm == null) {
+            Log.w(TAG, "Incomplete calibration: BB=${calibration.bottomBracket != null}, crank=${calibration.crankLengthMm != null}. Cannot compute KOPS.")
+            return KneeOverPedalOffsetResult.invalid(side)
+        }
+
         if (landmarks.size < PoseLandmarkIndex.LANDMARK_COUNT) {
             return KneeOverPedalOffsetResult.invalid(side)
         }
@@ -238,8 +317,16 @@ object KneeOverPedalOffset {
         // Calculate average confidence
         val confidence = (hip.visibility + knee.visibility + ankle.visibility) / 3f
 
-        // Compute the offset
-        val components = computeOffset(hip, knee, ankle, config)
+        // Compute spindle position
+        // Note: crankScale is already = meanAnkleDistance / crankLengthMm
+        // So spindle_x = BB_x + crankScale (since we're in normalized coordinates)
+        val spindle = Vector2D(
+            calibration.bottomBracket.x + crankScale,
+            calibration.bottomBracket.y
+        )
+
+        // Compute the offset using crank geometry
+        val components = computeOffsetWithSpindle(hip, knee, spindle, config)
 
         return KneeOverPedalOffsetResult(
             normalizedOffset = components.normalizedOffset,
@@ -250,8 +337,118 @@ object KneeOverPedalOffset {
             frameNumber = 0L,
             timestampMs = 0L,
             confidence = confidence,
-            isValid = true
+            isValid = true,
+            spindleX = spindle.x,
+            crankScale = crankScale,
+            computationMethod = "crank_geometry"
         )
+    }
+
+    /**
+     * Detects if frame is at 3 o'clock position (crank horizontal).
+     * 
+     * Estimates crank angle using ankle position relative to bottom bracket:
+     * crank_angle = atan2(ankle_y - BB_y, ankle_x - BB_x)
+     * 
+     * Returns true if crank_angle is within [85°, 95°].
+     * 
+     * @param frame The pose frame to check
+     * @param side Which leg to analyze
+     * @param calibration Bike calibration with BB position
+     * @param config Configuration with crank angle tolerances
+     * @return True if frame is at 3 o'clock position
+     */
+    fun isAtThreeOClock(
+        frame: PoseFrame,
+        side: BodySide,
+        calibration: BikeCalibration,
+        config: KneeOverPedalOffsetConfig = KneeOverPedalOffsetConfig()
+    ): Boolean {
+        if (calibration.bottomBracket == null || frame.landmarks.size < PoseLandmarkIndex.LANDMARK_COUNT) {
+            return false
+        }
+
+        val ankleIndex = if (side == BodySide.LEFT) PoseLandmarkIndex.LEFT_ANKLE else PoseLandmarkIndex.RIGHT_ANKLE
+        val ankle = frame.landmarks[ankleIndex]
+
+        if (!ankle.isVisible(config.visibilityThreshold)) {
+            return false
+        }
+
+        // Calculate crank angle relative to BB
+        val dx = ankle.x - calibration.bottomBracket.x
+        val dy = ankle.y - calibration.bottomBracket.y
+        
+        val crankAngleDegrees = Math.toDegrees(atan2(dy, dx).toDouble()).toFloat()
+        
+        // Normalize angle to [0, 360)
+        val normalizedAngle = if (crankAngleDegrees < 0) crankAngleDegrees + 360f else crankAngleDegrees
+
+        // Check if within [85°, 95°] (3 o'clock position)
+        return normalizedAngle >= config.crankAngleMinDegrees && normalizedAngle <= config.crankAngleMaxDegrees
+    }
+
+    /**
+     * Computes crank scale factor from frames at 3 o'clock position.
+     * 
+     * Uses ankle-BB distance as proxy for crank length:
+     * scale = mean(|ankle - BB|) / crank_length_mm
+     * 
+     * Computes using first N frames (hardcoded limit: 30 frames).
+     * 
+     * @param frames List of pose frames at 3 o'clock positions
+     * @param side Which leg to analyze
+     * @param calibration Bike calibration with BB and crank length
+     * @param config Configuration with visibility threshold and frame limit
+     * @return CrankScaleCache with computed scale or INVALID if insufficient data
+     */
+    fun computeCrankScale(
+        frames: List<PoseFrame>,
+        side: BodySide,
+        calibration: BikeCalibration,
+        config: KneeOverPedalOffsetConfig = KneeOverPedalOffsetConfig()
+    ): CrankScaleCache {
+        // Validate calibration
+        if (calibration.bottomBracket == null || calibration.crankLengthMm == null) {
+            Log.w(TAG, "Cannot compute crank scale: incomplete calibration")
+            return CrankScaleCache.INVALID
+        }
+
+        val ankleIndex = if (side == BodySide.LEFT) PoseLandmarkIndex.LEFT_ANKLE else PoseLandmarkIndex.RIGHT_ANKLE
+        val bb = Vector2D(calibration.bottomBracket.x, calibration.bottomBracket.y)
+
+        // Collect ankle-BB distances from first N frames
+        val ankleRadii = mutableListOf<Float>()
+        for (frame in frames) {
+            if (ankleRadii.size >= config.crankScaleFrameLimit) break
+            
+            if (frame.landmarks.size < PoseLandmarkIndex.LANDMARK_COUNT) continue
+            
+            val ankle = frame.landmarks[ankleIndex]
+            if (!ankle.isVisible(config.visibilityThreshold)) continue
+            
+            val anklePoint = Vector2D(ankle.x, ankle.y)
+            val radius = bb.distanceTo(anklePoint)
+            if (radius > Vector2D.EPSILON) {
+                ankleRadii.add(radius)
+            }
+        }
+
+        if (ankleRadii.isEmpty()) {
+            Log.w(TAG, "No valid ankle measurements for crank scale computation")
+            return CrankScaleCache.INVALID
+        }
+
+        val meanRadius = ankleRadii.average().toFloat()
+        val scale = meanRadius / calibration.crankLengthMm
+        
+        Log.d(TAG, "Computed crank scale: $scale from ${ankleRadii.size} frames")
+        Log.d(TAG, "  MeanAnkleDistance: $meanRadius (normalized coords)")
+        Log.d(TAG, "  CrankLength: ${calibration.crankLengthMm}mm")
+        Log.d(TAG, "  BB Position: (${calibration.bottomBracket.x}, ${calibration.bottomBracket.y})")
+        Log.d(TAG, "  Individual radii: $ankleRadii")
+
+        return CrankScaleCache(scale, ankleRadii.size, true)
     }
 
     /**
@@ -277,23 +474,23 @@ object KneeOverPedalOffset {
     }
 
     /**
-     * Internal function to compute the normalized offset.
+     * Internal function to compute normalized offset using spindle position (crank geometry).
      * 
      * @param hip Hip landmark
      * @param knee Knee landmark
-     * @param ankle Ankle landmark (proxy for pedal position)
+     * @param spindle Spindle position (computed from BB + crank length)
      * @param config Configuration options
      * @return Offset components including normalized and raw values
      */
-    private fun computeOffset(
+    private fun computeOffsetWithSpindle(
         hip: Landmark,
         knee: Landmark,
-        ankle: Landmark,
+        spindle: Vector2D,
         config: KneeOverPedalOffsetConfig
     ): OffsetComponents {
         // Calculate horizontal offset (X-axis difference)
-        // Positive = knee forward of ankle, Negative = knee behind ankle
-        val horizontalOffset = knee.x - ankle.x
+        // Positive = knee forward of spindle, Negative = knee behind spindle
+        val horizontalOffset = knee.x - spindle.x
 
         // Calculate femur length (hip to knee distance)
         val hipPoint = Vector2D(hip.x, hip.y)
@@ -302,11 +499,16 @@ object KneeOverPedalOffset {
 
         // Guard against zero femur length
         if (femurLength < Vector2D.EPSILON) {
+            Log.w(TAG, "Femur length too small: $femurLength")
             return OffsetComponents(0f, KneeAlignment.NEUTRAL, horizontalOffset, femurLength)
         }
 
         // Normalize offset by femur length
         val normalizedOffset = horizontalOffset / femurLength
+
+        Log.d(TAG, "  Offset calc: knee.x=${knee.x}, spindle.x=${spindle.x}")
+        Log.d(TAG, "  horizontalOffset=${horizontalOffset}, femurLength=${femurLength}")
+        Log.d(TAG, "  normalizedOffset=${normalizedOffset}")
 
         // Determine alignment based on normalized offset
         val alignment = when {
@@ -321,17 +523,20 @@ object KneeOverPedalOffset {
     /**
      * Computes knee-over-pedal offset from multiple frames and returns a summary.
      * 
-     * This is useful for analyzing offset across multiple 3 o'clock positions
-     * in a recording to get stable average measurements.
+     * REQUIRES: Complete calibration with bottom bracket and crank length.
      * 
      * @param frames List of pose frames (should all be at or near 3 o'clock position)
      * @param side Which leg to analyze
+     * @param calibration Bike calibration with BB and crank length
+     * @param crankScale Pre-computed crank scale factor
      * @param config Configuration options
      * @return Summary of offset measurements across all frames
      */
     fun computeFromFrames(
         frames: List<PoseFrame>,
         side: BodySide,
+        calibration: BikeCalibration,
+        crankScale: Float,
         config: KneeOverPedalOffsetConfig = KneeOverPedalOffsetConfig()
     ): KneeOverPedalOffsetSummary {
         if (frames.isEmpty()) {
@@ -340,7 +545,7 @@ object KneeOverPedalOffset {
 
         // Compute offset for each frame
         val results = frames.mapNotNull { frame ->
-            val result = computeAtFrame(frame, side, config)
+            val result = computeAtFrame(frame, side, calibration, crankScale, config)
             if (result.isValid) result else null
         }
 

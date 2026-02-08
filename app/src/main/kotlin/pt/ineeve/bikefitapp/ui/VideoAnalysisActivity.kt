@@ -71,6 +71,14 @@ class VideoAnalysisActivity : AppCompatActivity() {
     private val leftCycleAggregator = CycleAggregator(BodySide.LEFT)
     private val rightCycleAggregator = CycleAggregator(BodySide.RIGHT)
     
+    // KOPS crank scale cache (computed once from first 30 frames at 3 o'clock)
+    private var crankScaleCacheLeft: KneeOverPedalOffset.CrankScaleCache = KneeOverPedalOffset.CrankScaleCache.INVALID
+    private var crankScaleCacheRight: KneeOverPedalOffset.CrankScaleCache = KneeOverPedalOffset.CrankScaleCache.INVALID
+    
+    // Frames collected at 3 o'clock for crank scale computation
+    private val threeOClockFramesLeft = mutableListOf<PoseFrame>()
+    private val threeOClockFramesRight = mutableListOf<PoseFrame>()
+    
     // Key frame capture for 3 critical positions
     private val leftKeyFrameSet = mutableMapOf<CriticalPedalPosition, Triple<Long, Bitmap?, PoseFrame?>>()
     private val rightKeyFrameSet = mutableMapOf<CriticalPedalPosition, Triple<Long, Bitmap?, PoseFrame?>>()
@@ -85,6 +93,9 @@ class VideoAnalysisActivity : AppCompatActivity() {
     private var rightBdcBest: Pair<Long, Float>? = null
     private var leftThreeOClockBest: Pair<Long, Float>? = null
     private var rightThreeOClockBest: Pair<Long, Float>? = null
+    
+    // Track latest crank angle for overlay display
+    private var lastCrankAngle: Float? = null
     
     // Video info
     private var videoDurationMs = 0L
@@ -224,8 +235,14 @@ class VideoAnalysisActivity : AppCompatActivity() {
     private fun handleCalibrationTap(imageNormX: Float, imageNormY: Float) {
         val type = calibrationState.getCurrentPointType() ?: return
 
-        val point = BikeReferencePoint(type, imageNormX, imageNormY)
-        currentCalibration = currentCalibration.withPoint(point)
+        if (type == BikeReferencePointType.SPINDLE) {
+            // Spindle is special - but now store both X and Y
+            val point = BikeReferencePoint(type, imageNormX, imageNormY)
+            currentCalibration = currentCalibration.withPoint(point)
+        } else {
+            val point = BikeReferencePoint(type, imageNormX, imageNormY)
+            currentCalibration = currentCalibration.withPoint(point)
+        }
         
         // Validate when all points are collected
         if (currentCalibration.isComplete) {
@@ -246,8 +263,14 @@ class VideoAnalysisActivity : AppCompatActivity() {
     }
 
     private fun handleCalibrationAdjustment(type: BikeReferencePointType, imageNormX: Float, imageNormY: Float) {
-        val point = BikeReferencePoint(type, imageNormX, imageNormY)
-        currentCalibration = currentCalibration.withPoint(point)
+        if (type == BikeReferencePointType.SPINDLE) {
+            // Spindle adjustment
+            val point = BikeReferencePoint(type, imageNormX, imageNormY)
+            currentCalibration = currentCalibration.withPoint(point)
+        } else {
+            val point = BikeReferencePoint(type, imageNormX, imageNormY)
+            currentCalibration = currentCalibration.withPoint(point)
+        }
         
         // Update UI
         updateOverlay()
@@ -322,9 +345,10 @@ class VideoAnalysisActivity : AppCompatActivity() {
     private fun proceedCalibrationState() {
         calibrationState = when (calibrationState) {
             is CalibrationState.WaitingForSaddle -> CalibrationState.WaitingForBottomBracket
-            is CalibrationState.WaitingForBottomBracket -> CalibrationState.WaitingForHandlebar
+            is CalibrationState.WaitingForBottomBracket -> CalibrationState.WaitingForSpindle
+            is CalibrationState.WaitingForSpindle -> CalibrationState.WaitingForHandlebar
             is CalibrationState.WaitingForHandlebar -> {
-                // Show crank length input dialog
+                // Show crank length input dialog after handlebar is marked
                 showCrankLengthDialog()
                 CalibrationState.WaitingForCrankLength
             }
@@ -433,6 +457,9 @@ class VideoAnalysisActivity : AppCompatActivity() {
                  poseOverlay.updatePose(poseResult)
                  poseOverlay.updateAngles(angleDisplays)
                  
+                 // Update crank angle display if available
+                 poseOverlay.setCrankAngle(lastCrankAngle)
+                 
                  // Update cycle count
                  val cyclesLeft = leftCycleAggregator.getCycleCount()
                  val cyclesRight = rightCycleAggregator.getCycleCount()
@@ -452,7 +479,7 @@ class VideoAnalysisActivity : AppCompatActivity() {
              
              // Only process cycle metrics for the dominant side
              val dominantSide = detectDominantSide(poseResult)
-             processSideMetrics(poseResult, dominantSide, timestampMs, frameNumber)
+             processSideMetrics(poseResult, dominantSide, timestampMs, frameNumber, bitmap)
          }
     }
 
@@ -584,7 +611,7 @@ class VideoAnalysisActivity : AppCompatActivity() {
         return if (leftVisibility >= rightVisibility) BodySide.LEFT else BodySide.RIGHT
     }
 
-    private fun processSideMetrics(poseResult: PoseResult, side: BodySide, timestampMs: Long, frameNumber: Long) {
+    private fun processSideMetrics(poseResult: PoseResult, side: BodySide, timestampMs: Long, frameNumber: Long, currentFrameBitmap: Bitmap) {
         val kneeIndex = if (side == BodySide.LEFT) PoseLandmarkIndex.LEFT_KNEE else PoseLandmarkIndex.RIGHT_KNEE
         val ankleIndex = if (side == BodySide.LEFT) PoseLandmarkIndex.LEFT_ANKLE else PoseLandmarkIndex.RIGHT_ANKLE
         
@@ -606,15 +633,45 @@ class VideoAnalysisActivity : AppCompatActivity() {
         val ankleResult = AnkleAngleCalculator.calculateAnkleAngle(poseResult, side)
         val ankleAngle = if (ankleResult.isValid) ankleResult.angle else null
         
-        // Compute KOPS (Knee Over Pedal Spindle) normalized value
+        // Create pose frame for KOPS computation
         val poseFrame = PoseFrame(
             frameNumber = frameNumber,
             timestampMs = timestampMs,
             landmarks = poseResult.landmarks,
             confidence = poseResult.confidence
         )
-        val kopsResult = KneeOverPedalOffset.computeAtFrame(poseFrame, side)
-        val kopsNormalized = if (kopsResult.isValid) kopsResult.normalizedOffset else null
+        
+        // Collect 3 o'clock frames for crank scale computation (8 frames provides ~3-4 rotation cycles for averaging)
+        // Use ThreeOClockDetector (same logic as key frame detection) to identify valid 3 o'clock frames
+        val threeOClockEvent = ThreeOClockDetector.detectAtFrame(poseFrame, side, currentCalibration)
+        val threeOClockFramesList = if (side == BodySide.LEFT) threeOClockFramesLeft else threeOClockFramesRight
+        val crankScaleCache = if (side == BodySide.LEFT) crankScaleCacheLeft else crankScaleCacheRight
+        
+        if (threeOClockEvent != null && threeOClockFramesList.size < 8 && !crankScaleCache.isValid) {
+            threeOClockFramesList.add(poseFrame)
+            Log.d(TAG, "processSideMetrics: Added frame to 3 O'Clock collection for side $side. Count: ${threeOClockFramesList.size}/8, confidence=${threeOClockEvent.confidence}")
+            
+            // Compute crank scale once we reach 8 frames
+            if (threeOClockFramesList.size >= 8) {
+                Log.d(TAG, "processSideMetrics: Computing crank scale from 8 frames for side $side")
+                val newCache = KneeOverPedalOffset.computeCrankScale(threeOClockFramesList, side, currentCalibration)
+                Log.d(TAG, "processSideMetrics: Crank scale computed for side $side: scale=${newCache.scale}, isValid=${newCache.isValid}, frameCount=${newCache.frameCount}")
+                if (side == BodySide.LEFT) {
+                    crankScaleCacheLeft = newCache
+                } else {
+                    crankScaleCacheRight = newCache
+                }
+            }
+        }
+        
+        // Compute KOPS using crank geometry (requires calibration and valid crank scale)
+        // Only compute KOPS if we have a valid crank scale
+        val kopsNormalized = if (crankScaleCache.isValid) {
+            val kopsResult = KneeOverPedalOffset.computeAtFrame(poseFrame, side, currentCalibration, crankScaleCache.scale)
+            if (kopsResult.isValid) kopsResult.normalizedOffset else null
+        } else {
+            null
+        }
         
         val aggregator = if (side == BodySide.LEFT) leftCycleAggregator else rightCycleAggregator
         
@@ -625,11 +682,14 @@ class VideoAnalysisActivity : AppCompatActivity() {
         val sidePrefix = if (side == BodySide.LEFT) "L" else "R"
         
         // Check for 3 O'Clock position (pedal at horizontal)
+        // Note: threeOClockEvent was already computed above for crank scale collection
         Log.d(TAG, "processSideMetrics: Checking 3 O'Clock detection for frame $frameNumber, side $side, poseFrame valid: ${poseFrame.isValid}, landmarks: ${poseFrame.landmarks.size}")
-        val threeOClockEvent = ThreeOClockDetector.detectAtFrame(poseFrame, side)
         Log.d(TAG, "processSideMetrics: 3 O'Clock detection result: $threeOClockEvent, frameNumber=$frameNumber, confidence=${threeOClockEvent?.confidence}")
         
         if (threeOClockEvent != null) {
+            // Update the latest crank angle for overlay display
+            lastCrankAngle = threeOClockEvent.crankAngleDegrees
+            
             // Track best 3 O'Clock by confidence (capture frame with HIGHEST confidence, not first)
             val bestTracker = if (side == BodySide.LEFT) leftThreeOClockBest else rightThreeOClockBest
             
@@ -648,10 +708,8 @@ class VideoAnalysisActivity : AppCompatActivity() {
                 keyFrameMap.remove(CriticalPedalPosition.THREE_O_CLOCK)
                 
                 // Capture new best 3 O'Clock frame
-                val bitmap = currentVideoFrameBitmap?.let {
-                    val copy = it.copy(it.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
-                    copy
-                }
+                val bitmap = currentFrameBitmap.copy(currentFrameBitmap.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
+
                 keyFrameMap[CriticalPedalPosition.THREE_O_CLOCK] = Triple(frameNumber, bitmap, poseFrame.copy())
                 Log.d(TAG, "processSideMetrics: Updated 3 O'Clock frame - frameNumber=$frameNumber, confidence=${threeOClockEvent.confidence}, bitmap!=null=${bitmap != null}")
             }
@@ -677,10 +735,7 @@ class VideoAnalysisActivity : AppCompatActivity() {
                     } else {
                         rightBdcBest = Pair(frameNumber, event.confidence)
                     }
-                    val bitmap = currentVideoFrameBitmap?.let {
-                        // Create a completely independent copy
-                        it.copy(it.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
-                    }
+                    val bitmap = currentFrameBitmap.copy(currentFrameBitmap.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
                     keyFrameMap[CriticalPedalPosition.BDC] = Triple(frameNumber, bitmap, poseFrame.copy())
                     Log.d(TAG, "Updated BDC frame - frameNumber=$frameNumber, confidence=${event.confidence}, bitmap!=null=${bitmap != null}")
                 }
@@ -712,10 +767,7 @@ class VideoAnalysisActivity : AppCompatActivity() {
                     } else {
                         rightTdcBest = Pair(frameNumber, event.confidence)
                     }
-                    val bitmap = currentVideoFrameBitmap?.let {
-                        // Create a completely independent copy
-                        it.copy(it.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
-                    }
+                    val bitmap = currentFrameBitmap.copy(currentFrameBitmap.config ?: android.graphics.Bitmap.Config.ARGB_8888, false)
                     keyFrameMap[CriticalPedalPosition.TDC] = Triple(frameNumber, bitmap, poseFrame.copy())
                     Log.d(TAG, "Updated TDC frame - frameNumber=$frameNumber, confidence=${event.confidence}, bitmap!=null=${bitmap != null}")
                 }

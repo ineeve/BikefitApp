@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@android:color/black">
+
+    <!-- Toolbar -->
+    <com.google.android.material.appbar.MaterialToolbar
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="@android:color/black"
+        android:elevation="4dp"
+        xmlns:app="http://schemas.android.com/apk/res-auto"
+        app:navigationIcon="@drawable/ic_back" />
+
+    <!-- Custom zoomable image view with overlays -->
+    <pt.ineeve.bikefitapp.ui.ZoomableImageView
+        android:id="@+id/zoomable_image_view"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="@android:color/black" />
+
+    <!-- Zoom instructions text -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="16dp"
+        android:text="@string/pinch_to_zoom"
+        android:textColor="@android:color/white"
+        android:textAlignment="center"
+        android:textSize="12sp"
+        android:alpha="0.7"
+        android:background="@android:color/black" />
+
+</LinearLayout>

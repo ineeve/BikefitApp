@@ -82,6 +82,7 @@ object CalibrationRepository {
         return when (type) {
             BikeReferencePointType.SADDLE_TOP -> currentCalibration?.saddleTop
             BikeReferencePointType.BOTTOM_BRACKET -> currentCalibration?.bottomBracket
+            BikeReferencePointType.SPINDLE -> currentCalibration?.spindle
             BikeReferencePointType.HANDLEBAR -> currentCalibration?.handlebar
         }
     }

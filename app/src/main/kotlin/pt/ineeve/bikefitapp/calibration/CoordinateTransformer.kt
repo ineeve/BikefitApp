@@ -135,6 +135,7 @@ class CoordinateTransformer(
         val point = when (type) {
             BikeReferencePointType.SADDLE_TOP -> calibration.saddleTop!!
             BikeReferencePointType.BOTTOM_BRACKET -> calibration.bottomBracket!!
+            BikeReferencePointType.SPINDLE -> error("Spindle position should be queried separately")
             BikeReferencePointType.HANDLEBAR -> calibration.handlebar!!
         }
         

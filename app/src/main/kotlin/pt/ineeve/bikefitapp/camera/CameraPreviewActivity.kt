@@ -460,15 +460,11 @@ class CameraPreviewActivity : AppCompatActivity() {
         val ankleResult = AnkleAngleCalculator.calculateAnkleAngle(poseResult, side)
         val ankleAngle = if (ankleResult.isValid) ankleResult.angle else null
         
-        // Compute KOPS (Knee Over Pedal Spindle) normalized value
-        val poseFrame = PoseFrame(
-            frameNumber = frameNumber,
-            timestampMs = timestampMs,
-            landmarks = poseResult.landmarks,
-            confidence = poseResult.confidence
-        )
-        val kopsResult = KneeOverPedalOffset.computeAtFrame(poseFrame, side)
-        val kopsNormalized = if (kopsResult.isValid) kopsResult.normalizedOffset else null
+        // Note: KOPS computation now requires calibration + crank scale, only computed in VideoAnalysisActivity
+        // val poseFrame = PoseFrame(...)
+        // val kopsResult = KneeOverPedalOffset.computeAtFrame(...)
+        // val kopsNormalized = if (kopsResult.isValid) kopsResult.normalizedOffset else null
+        val kopsNormalized: Float? = null
 
         // Feed aggregator
         val aggregator = if (side == BodySide.LEFT) leftCycleAggregator else rightCycleAggregator

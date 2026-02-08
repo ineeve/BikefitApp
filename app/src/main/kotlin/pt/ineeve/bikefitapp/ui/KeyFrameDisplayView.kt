@@ -19,13 +19,14 @@ import pt.ineeve.bikefitapp.pose.PoseFrame
  * - Pose landmarks (if available)
  * - Angle measurements labeled with values
  * - Position indicator (TDC/BDC/3 O'Clock)
+ * 
+ * Supports click listeners for fullscreen viewing.
  */
 class KeyFrameDisplayView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
-
     private var frameBitmap: Bitmap? = null
     private var frameData: KeyFrameDataPoint? = null
     private var position: CriticalPedalPosition? = null
@@ -79,9 +80,24 @@ class KeyFrameDisplayView @JvmOverloads constructor(
         textSize = 16f
         isFakeBoldText = true
     }
+    
+    private val kneeReferenceLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = KNEE_REFERENCE_LINE_COLOR
+        style = Paint.Style.STROKE
+        strokeWidth = DEFAULT_KNEE_LINE_WIDTH
+        isAntiAlias = true
+        strokeCap = Paint.Cap.BUTT
+    }
+    
+    /** Whether to show vertical knee reference line for KOPS visualization */
+    var showKneeReferenceLine: Boolean = true
+        set(value) { field = value; invalidate() }
 
     init {
         framePaint.style = Paint.Style.FILL
+        // Make view clickable for fullscreen display
+        isClickable = true
+        isFocusable = true
     }
 
     /**
@@ -95,7 +111,29 @@ class KeyFrameDisplayView @JvmOverloads constructor(
         this.frameBitmap = frameData?.bitmap
         this.position = frameData?.position
         this.angles = angles
+        
+        // Set up click listener for fullscreen view
+        if (frameBitmap != null) {
+            setOnClickListener {
+                val positionLabel = when (position) {
+                    CriticalPedalPosition.TDC -> "TDC (Top Dead Center)"
+                    CriticalPedalPosition.BDC -> "BDC (Bottom Dead Center)"
+                    CriticalPedalPosition.THREE_O_CLOCK -> "3 O'Clock (Horizontal)"
+                    null -> "Unknown Position"
+                }
+                // Pass bitmap, pose frame, and angles to fullscreen viewer
+                val intent = FullscreenImageViewerActivity.createIntent(
+                    context,
+                    frameBitmap!!,
+                    frameData?.poseFrame,
+                    angles,
+                    positionLabel
+                )
+                context.startActivity(intent)
+            }
+        }
         invalidate()
+
     }
 
     /**
@@ -246,6 +284,11 @@ class KeyFrameDisplayView @JvmOverloads constructor(
         // Draw angle overlays (knee, hip, ankle)
         drawAngles(canvas, viewLandmarks, poseFrame)
         
+        // Draw knee reference line for KOPS visualization
+        if (showKneeReferenceLine) {
+            drawKneeReferenceLine(canvas, viewLandmarks, scaledRect)
+        }
+        
         // Draw landmark points on top
         val landmarkRadius = 6f
         for ((_, coords) in viewLandmarks) {
@@ -330,5 +373,39 @@ class KeyFrameDisplayView @JvmOverloads constructor(
         val labelX = vertexCoord.first + 15f
         val labelY = vertexCoord.second + labelOffset
         canvas.drawText(label, labelX, labelY, angleTextPaint)
+    }
+    
+    /**
+     * Draws a vertical reference line through the knee landmark.
+     * This line helps visually compare knee position with the pedal spindle at 3 o'clock.
+     */
+    private fun drawKneeReferenceLine(
+        canvas: Canvas,
+        landmarks: Map<Int, Pair<Float, Float>>,
+        scaledRect: RectF
+    ) {
+        val poseFrame = frameData?.poseFrame ?: return
+        
+        // Get knee landmark indices (MediaPipe: 25=LEFT_KNEE, 26=RIGHT_KNEE)
+        val leftKneeLandmark = poseFrame.landmarks.getOrNull(25) ?: return
+        val rightKneeLandmark = poseFrame.landmarks.getOrNull(26) ?: return
+        
+        // Use the most visible knee
+        val kneeCoord = if (leftKneeLandmark.visibility >= rightKneeLandmark.visibility) {
+            landmarks[25]
+        } else {
+            landmarks[26]
+        } ?: return
+        
+        // Draw vertical line from top to bottom of the frame
+        canvas.drawLine(kneeCoord.first, scaledRect.top, kneeCoord.first, scaledRect.bottom, kneeReferenceLinePaint)
+    }
+    
+    // ==================== Constants ====================
+    
+    companion object {
+        // Knee reference line constants for KOPS visualization
+        private const val KNEE_REFERENCE_LINE_COLOR = 0xFFFF0000.toInt()  // Red
+        private const val DEFAULT_KNEE_LINE_WIDTH = 2f
     }
 }

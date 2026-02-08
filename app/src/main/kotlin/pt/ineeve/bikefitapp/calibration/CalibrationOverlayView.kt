@@ -102,6 +102,7 @@ class CalibrationOverlayView @JvmOverloads constructor(
         private val COLOR_SADDLE = Color.rgb(255, 87, 34)      // Deep Orange
         private val COLOR_BOTTOM_BRACKET = Color.rgb(76, 175, 80)  // Green
         private val COLOR_HANDLEBAR = Color.rgb(33, 150, 243)  // Blue
+        private val COLOR_SPINDLE = Color.rgb(233, 30, 99)     // Pink/Magenta
         
         /** Label offset from point */
         private const val LABEL_OFFSET_Y = -50f
@@ -161,7 +162,7 @@ class CalibrationOverlayView @JvmOverloads constructor(
                     invalidate()
                     return true
                 } else if (state.getCurrentPointType() != null) {
-                    // No existing point touched, create new point
+                    // No existing point touched, create new point with a tap
                     onPointTappedListener?.invoke(normalizedX, normalizedY)
                     return true
                 }
@@ -203,6 +204,12 @@ class CalibrationOverlayView @JvmOverloads constructor(
                 return BikeReferencePointType.BOTTOM_BRACKET
             }
         }
+        calibration.spindle?.let { point ->
+            val viewPoint = mapper.mapToView(point.x, point.y)
+            if (isPointNear(x, y, viewPoint.x, viewPoint.y)) {
+                return BikeReferencePointType.SPINDLE
+            }
+        }
         calibration.handlebar?.let { point ->
             val viewPoint = mapper.mapToView(point.x, point.y)
             if (isPointNear(x, y, viewPoint.x, viewPoint.y)) {
@@ -241,6 +248,11 @@ class CalibrationOverlayView @JvmOverloads constructor(
         calibration.handlebar?.let { point ->
             val isSelected = selectedPoint == BikeReferencePointType.HANDLEBAR
             drawPoint(canvas, point, "Handlebar", COLOR_HANDLEBAR, isSelected)
+        }
+        
+        calibration.spindle?.let { point ->
+            val isSelected = selectedPoint == BikeReferencePointType.SPINDLE
+            drawPoint(canvas, point, "Spindle", COLOR_SPINDLE, isSelected)
         }
         
         // Draw hint for next point to tap (only if not all points set)
@@ -291,6 +303,63 @@ class CalibrationOverlayView @JvmOverloads constructor(
     }
     
     /**
+     * Draws the spindle marker at the marked spindle X position.
+     */
+    private fun drawSpindleMarker(canvas: Canvas, spindleX: Float) {
+        val bb = calibration.bottomBracket ?: return
+        val isSelected = selectedPoint == BikeReferencePointType.SPINDLE
+        
+        // Draw spindle as a vertical line through the X position
+        val startY = mapper.mapToView(0f, 0f).y
+        val endY = mapper.mapToView(bb.x, bb.y).y
+        
+        val markerX = mapper.mapToView(spindleX, 0f).x
+        
+        // Draw vertical line for spindle
+        val spindlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = COLOR_SPINDLE
+            strokeWidth = 4f
+            style = Paint.Style.STROKE
+        }
+        canvas.drawLine(markerX, startY, markerX, endY, spindlePaint)
+        
+        // Draw marker circle at the BB Y level
+        val bbView = mapper.mapToView(spindleX, bb.y)
+        val x = bbView.x
+        val y = bbView.y
+        
+        // Draw selection indicator if selected
+        if (isSelected) {
+            canvas.drawCircle(x, y, POINT_OUTER_RADIUS + 12f, selectedStrokePaint)
+        }
+        
+        // Draw outer ring
+        pointStrokePaint.color = Color.WHITE
+        canvas.drawCircle(x, y, POINT_OUTER_RADIUS, pointStrokePaint)
+        
+        // Draw filled circle with spindle color
+        val spindleFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = COLOR_SPINDLE
+            style = Paint.Style.FILL
+        }
+        canvas.drawCircle(x, y, POINT_RADIUS, spindleFillPaint)
+        
+        // Draw label
+        val displayLabel = if (isSelected) "⟷ Spindle" else "Spindle"
+        val labelWidth = labelPaint.measureText(displayLabel) + 20f
+        val labelHeight = 40f
+        canvas.drawRoundRect(
+            x - labelWidth / 2,
+            y + LABEL_OFFSET_Y - labelHeight / 2,
+            x + labelWidth / 2,
+            y + LABEL_OFFSET_Y + labelHeight / 2,
+            8f, 8f,
+            labelBackgroundPaint
+        )
+        canvas.drawText(displayLabel, x, y + LABEL_OFFSET_Y + 10f, labelPaint)
+    }
+    
+    /**
      * Draws a hint to let the user know they can adjust points.
      */
     private fun drawAdjustmentHint(canvas: Canvas) {
@@ -319,15 +388,20 @@ class CalibrationOverlayView @JvmOverloads constructor(
     }
 
     /**
-     * Draws lines connecting the reference points.
+     * Draws lines connecting the reference points in order: Saddle, BB, Spindle, Handlebar
      */
     private fun drawConnectionLines(canvas: Canvas) {
         val points = mutableListOf<PointF>()
         
+        // Add points in calibration order: Saddle, BB, Spindle, Handlebar
         calibration.saddleTop?.let { 
             points.add(mapper.mapToView(it.x, it.y))
         }
         calibration.bottomBracket?.let { 
+            points.add(mapper.mapToView(it.x, it.y))
+        }
+        // Add spindle point if marked
+        calibration.spindle?.let { 
             points.add(mapper.mapToView(it.x, it.y))
         }
         calibration.handlebar?.let { 
@@ -344,11 +418,11 @@ class CalibrationOverlayView @JvmOverloads constructor(
             )
         }
         
-        // If all points present, draw line from handlebar to saddle
-        if (points.size == 3) {
+        // If all points present, draw line from handlebar back to saddle to close the loop
+        if (points.size == 4) {
             linePaint.color = Color.argb(100, 255, 255, 255)
             canvas.drawLine(
-                points[2].x, points[2].y,  // Handlebar
+                points[3].x, points[3].y,  // Handlebar
                 points[0].x, points[0].y,  // Saddle
                 linePaint
             )
@@ -364,6 +438,7 @@ class CalibrationOverlayView @JvmOverloads constructor(
         val color = when (pointType) {
             BikeReferencePointType.SADDLE_TOP -> COLOR_SADDLE
             BikeReferencePointType.BOTTOM_BRACKET -> COLOR_BOTTOM_BRACKET
+            BikeReferencePointType.SPINDLE -> COLOR_SPINDLE
             BikeReferencePointType.HANDLEBAR -> COLOR_HANDLEBAR
         }
         
@@ -371,6 +446,7 @@ class CalibrationOverlayView @JvmOverloads constructor(
         val (hintX, hintY) = when (pointType) {
             BikeReferencePointType.SADDLE_TOP -> Pair(0.3f, 0.3f)  // Upper left area
             BikeReferencePointType.BOTTOM_BRACKET -> Pair(0.4f, 0.7f)  // Lower center
+            BikeReferencePointType.SPINDLE -> Pair(0.5f, 0.7f)  // Forward of BB
             BikeReferencePointType.HANDLEBAR -> Pair(0.7f, 0.35f)  // Right side
         }
         
@@ -412,6 +488,8 @@ class CalibrationOverlayView @JvmOverloads constructor(
         drawTargetLabel(canvas, centerX, centerY, pointType, color)
     }
     
+
+    
     /**
      * Draws a label with arrow pointing to the target area.
      */
@@ -420,6 +498,7 @@ class CalibrationOverlayView @JvmOverloads constructor(
         val label = when (pointType) {
             BikeReferencePointType.SADDLE_TOP -> "👆 TAP HERE\nSaddle Top"
             BikeReferencePointType.BOTTOM_BRACKET -> "👆 TAP HERE\nBottom Bracket"
+            BikeReferencePointType.SPINDLE -> "👆 TAP HERE\nSpindle"
             BikeReferencePointType.HANDLEBAR -> "👆 TAP HERE\nHandlebar"
         }
         

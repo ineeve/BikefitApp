@@ -341,6 +341,7 @@ class BikeOverlayView @JvmOverloads constructor(
         // to indicate this is a read-only view
         val COLOR_SADDLE = Color.rgb(255, 87, 34)       // Deep Orange
         val COLOR_BOTTOM_BRACKET = Color.rgb(76, 175, 80)   // Green
+        val COLOR_SPINDLE = Color.rgb(233, 30, 99)      // Pink/Magenta
         val COLOR_HANDLEBAR = Color.rgb(33, 150, 243)   // Blue
         
         /**
@@ -350,6 +351,7 @@ class BikeOverlayView @JvmOverloads constructor(
             return when (type) {
                 BikeReferencePointType.SADDLE_TOP -> COLOR_SADDLE
                 BikeReferencePointType.BOTTOM_BRACKET -> COLOR_BOTTOM_BRACKET
+                BikeReferencePointType.SPINDLE -> COLOR_SPINDLE
                 BikeReferencePointType.HANDLEBAR -> COLOR_HANDLEBAR
             }
         }

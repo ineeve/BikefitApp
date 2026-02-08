@@ -78,7 +78,7 @@ Complete guide for setting up, calibrating, recording, and interpreting bike fit
 
 **Step 2: Mark Saddle**
 ```
-Instruction: "Tap on the saddle top"
+Instruction: "Step 1/4: Tap the top of the saddle"
 ```
 - Tap on the **top center** of the saddle
 - A marker appears at tapped location
@@ -86,30 +86,39 @@ Instruction: "Tap on the saddle top"
 
 **Step 3: Mark Bottom Bracket**
 ```
-Instruction: "Tap on the bottom bracket center"
+Instruction: "Step 2/4: Tap the center of the bottom bracket"
 ```
 - Tap on the **center of the bottom bracket** (crank axle)
 - This is the reference origin for measurements
 - Adjust marker position if needed
 
-**Step 4: Mark Handlebar**
+**Step 4: Mark Pedal Spindle**
 ```
-Instruction: "Tap on the handlebar grip"
+Instruction: "Step 3/4: Tap the pedal spindle"
+```
+- Tap on the **pedal spindle** (crank arm at 3 o'clock position)
+- Used for precise pedal position reference
+- Adjust marker position if needed
+
+**Step 5: Mark Handlebar**
+```
+Instruction: "Step 4/4: Tap the handlebar grip"
 ```
 - Tap on **handlebar grip** (where hands rest on hoods)
 - Used for reach/cockpit analysis
 - Adjust marker position if needed
 
-**Step 5: Confirm**
-- Review all three markers
+**Step 6: Confirm**
+- Review all four markers
 - Tap "Confirm" to save calibration
 - Returns to analysis screen
 
 ### Calibration Tips
 - **Zoom In:** Use pinch-to-zoom for precise marking
 - **Static Bike:** Ensure bike is stationary during calibration
-- **Clear View:** All three points should be clearly visible
+- **Clear View:** All four points should be clearly visible
 - **Accuracy:** Precise marking improves KOPS analysis accuracy
+- **Point Order:** Saddle → Bottom Bracket → Pedal Spindle → Handlebar
 
 ### Calibration State
 - **Stored:** In-memory for current session

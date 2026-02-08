@@ -171,6 +171,29 @@ class PoseOverlayView @JvmOverloads constructor(
             invalidate()
         }
 
+    /** Whether to show vertical knee reference line for KOPS visualization */
+    var showKneeReferenceLine: Boolean = true
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    /** Color for knee reference line */
+    var kneeReferenceLineColor: Int = KNEE_REFERENCE_LINE_COLOR
+        set(value) {
+            field = value
+            kneeReferenceLinePaint.color = value
+            invalidate()
+        }
+
+    /** Stroke width for knee reference line */
+    var kneeReferenceLineWidth: Float = DEFAULT_KNEE_LINE_WIDTH
+        set(value) {
+            field = value
+            kneeReferenceLinePaint.strokeWidth = value
+            invalidate()
+        }
+
     // ==================== Paint Objects ====================
     
     private val landmarkPaint = Paint().apply {
@@ -199,6 +222,14 @@ class PoseOverlayView @JvmOverloads constructor(
         textAlign = Paint.Align.LEFT
         isAntiAlias = true
         isFakeBoldText = true
+    }
+    
+    private val kneeReferenceLinePaint = Paint().apply {
+        color = KNEE_REFERENCE_LINE_COLOR
+        style = Paint.Style.STROKE
+        strokeWidth = DEFAULT_KNEE_LINE_WIDTH
+        isAntiAlias = true
+        strokeCap = Paint.Cap.BUTT
     }
     
     private val angleBackgroundPaint = Paint().apply {
@@ -245,6 +276,9 @@ class PoseOverlayView @JvmOverloads constructor(
     
     /** Rect for drawing angle backgrounds */
     private val angleRect = RectF()
+    
+    /** Crank angle in degrees (0-360) */
+    private var crankAngleDegrees: Float? = null
 
     // ==================== Public API ====================
     
@@ -310,12 +344,23 @@ class PoseOverlayView @JvmOverloads constructor(
     }
     
     /**
+     * Updates the crank angle to display on the overlay.
+     * 
+     * @param angle The crank angle in degrees (0-360), or null to hide
+     */
+    fun setCrankAngle(angle: Float?) {
+        crankAngleDegrees = angle
+        invalidate()
+    }
+    
+    /**
      * Clears the current pose overlay.
      */
     fun clear() {
         currentPose = null
         transformedLandmarks.clear()
         anglesToDisplay.clear()
+        crankAngleDegrees = null
         invalidate()
     }
     
@@ -347,9 +392,49 @@ class PoseOverlayView @JvmOverloads constructor(
         // Draw landmark points
         drawLandmarks(canvas, pose)
         
+        // Draw knee reference line for KOPS visualization
+        if (showKneeReferenceLine && currentPose != null) {
+            drawKneeReferenceLine(canvas)
+        }
+
         // Draw angle values
         if (showAngles) {
             drawAngles(canvas)
+        }
+        
+        // Draw crank angle if available
+        if (crankAngleDegrees != null) {
+            drawCrankAngle(canvas)
+        }
+    }
+    
+    /**
+     * Draws a vertical reference line through the knee landmark.
+     * This line helps visually compare knee position with the pedal spindle at 3 o'clock.
+     */
+    private fun drawKneeReferenceLine(canvas: Canvas) {
+        val pose = currentPose ?: return
+        
+        // Get knee landmarks (both left and right)
+        val leftKneeIndex = PoseLandmarkIndex.LEFT_KNEE
+        val rightKneeIndex = PoseLandmarkIndex.RIGHT_KNEE
+        
+        val leftKneeLandmark = pose.landmarks.getOrNull(leftKneeIndex) ?: return
+        val rightKneeLandmark = pose.landmarks.getOrNull(rightKneeIndex) ?: return
+        
+        if (leftKneeLandmark.visibility < visibilityThreshold && rightKneeLandmark.visibility < visibilityThreshold) {
+            return
+        }
+        
+        // Draw line through the most visible knee
+        if (leftKneeLandmark.visibility >= rightKneeLandmark.visibility) {
+            val kneePoint = transformedLandmarks[leftKneeIndex] ?: return
+            // Draw vertical line from top to bottom of view
+            canvas.drawLine(kneePoint.x, 0f, kneePoint.x, height.toFloat(), kneeReferenceLinePaint)
+        } else {
+            val kneePoint = transformedLandmarks[rightKneeIndex] ?: return
+            // Draw vertical line from top to bottom of view
+            canvas.drawLine(kneePoint.x, 0f, kneePoint.x, height.toFloat(), kneeReferenceLinePaint)
         }
     }
     
@@ -678,6 +763,37 @@ class PoseOverlayView @JvmOverloads constructor(
         // Draw text
         canvas.drawText(angleText, adjustedX, adjustedY, angleTextPaint)
     }
+    
+    /**
+     * Draws the crank angle value in the top-left corner of the overlay.
+     */
+    private fun drawCrankAngle(canvas: Canvas) {
+        val angle = crankAngleDegrees ?: return
+        
+        // Format crank angle text
+        val crankText = String.format("Crank: %.1f°", angle)
+        
+        // Measure text
+        val textWidth = angleTextPaint.measureText(crankText)
+        val textHeight = angleTextPaint.textSize
+        
+        // Position in top-left corner with padding
+        val padding = ANGLE_PADDING * 2
+        val textX = padding
+        val textY = textHeight + padding
+        
+        // Draw background rectangle
+        angleRect.set(
+            textX - ANGLE_PADDING,
+            textY - textHeight - ANGLE_PADDING / 2,
+            textX + textWidth + ANGLE_PADDING,
+            textY + ANGLE_PADDING
+        )
+        canvas.drawRoundRect(angleRect, ANGLE_CORNER_RADIUS, ANGLE_CORNER_RADIUS, angleBackgroundPaint)
+        
+        // Draw text
+        canvas.drawText(crankText, textX, textY, angleTextPaint)
+    }
 
     // ==================== Constants ====================
     
@@ -709,6 +825,10 @@ class PoseOverlayView @JvmOverloads constructor(
         private const val HIP_ANGLE_COLOR = 0xFF4CAF50.toInt()    // Green
         private const val ANKLE_ANGLE_COLOR = 0xFFFF9800.toInt()  // Orange
         private const val TORSO_ANGLE_COLOR = 0xFF9C27B0.toInt()  // Purple
+        
+        // Knee reference line constants for KOPS visualization
+        private const val KNEE_REFERENCE_LINE_COLOR = 0xFFFF0000.toInt()  // Red
+        private const val DEFAULT_KNEE_LINE_WIDTH = 2f
         
         /**
          * Skeleton connections for full body visualization.
