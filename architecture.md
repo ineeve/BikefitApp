@@ -17,7 +17,7 @@ The complete data processing pipeline consists of 12 stages:
    ↓
 4. PoseLandmarkerWrapper (MediaPipe inference)
    ↓
-5. LandmarkSmoother (EMA smoothing)
+5. LandmarkSmoother (EMA smoothing) or OneEuroLandmarkSmoother (adaptive smoothing)
    ↓
 6. PoseValidator (confidence/visibility checks)
    ↓
@@ -100,6 +100,14 @@ val normalized = transformer.normalizeToFemurLength(
 - `LandmarkSmoother` (195 lines) - Exponential Moving Average (EMA)
   - Formula: `smoothed = α * current + (1-α) * previous`
   - Default α = 0.4
+- `OneEuroFilter` (135 lines) - Adaptive low-pass filter
+  - Based on Casiez et al. 2012
+  - Adjusts cutoff frequency based on signal velocity
+  - Parameters: minCutoff (1.0 Hz), beta (0.02), dCutoff (1.0 Hz)
+- `OneEuroLandmarkSmoother` (170 lines) - One Euro filter for landmarks
+  - Filters X, Y, Z coordinates independently
+  - Targets hip, knee, ankle, toe landmarks (8 total)
+  - Performance: ~0.006ms per frame
 - `PoseValidator` - Visibility and confidence validation
 - `PoseFrame`, `PoseResult` - Data models (33 MediaPipe landmarks)
 
