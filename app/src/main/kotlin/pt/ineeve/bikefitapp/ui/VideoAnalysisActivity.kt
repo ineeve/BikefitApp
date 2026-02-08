@@ -428,7 +428,7 @@ class VideoAnalysisActivity : AppCompatActivity() {
             withContext(Dispatchers.Main) {
                 Toast.makeText(
                     this@VideoAnalysisActivity,
-                    "Warning: Video recorded at ${videoActualFps.toInt()} fps (target: ${TARGET_SAMPLING_FPS.toInt()} fps)",
+                    "Warning: Video recorded at ${"%.1f".format(videoActualFps)} fps (target: ${TARGET_SAMPLING_FPS.toInt()} fps)",
                     Toast.LENGTH_LONG
                 ).show()
             }
@@ -467,7 +467,9 @@ class VideoAnalysisActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     videoFrameView.setImageBitmap(frame)
                 }
-                val timestampMs = (i * TARGET_INTERVAL_MS).toLong() // Approx timestamp at 60fps sampling
+                // Use 60fps timestamp regardless of video's actual FPS for consistent analysis timing.
+                // If video < 60fps, frames may be duplicated, but this ensures uniform temporal resolution.
+                val timestampMs = (i * TARGET_INTERVAL_MS).toLong()
                 processFrame(frame, timestampMs, i.toLong())
             }
 
