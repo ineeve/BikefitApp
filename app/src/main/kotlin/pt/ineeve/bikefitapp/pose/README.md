@@ -16,8 +16,9 @@ The `pose` module encapsulates the MediaPipe Vision Tasks API. It takes raw imag
 ### `OneEuroFilter` & `OneEuroLandmarkSmoother`
 - Advanced adaptive smoothing based on Casiez et al. 2012.
 - Automatically adjusts smoothing strength based on movement velocity.
-- Applied to key bike fit landmarks: hip, knee, ankle, and toe.
+- Applied to key bike fit landmarks: hip, knee, ankle, heel, and toe.
 - Reduces jitter during slow movements while maintaining responsiveness during fast movements.
+- **Integrated into processing pipeline**: Applied after pose estimation in both live camera preview and video analysis.
 
 ### `PoseValidator`
 - Checks if necessary landmarks (e.g., hip, knee, ankle, foot) are visible in the frame.

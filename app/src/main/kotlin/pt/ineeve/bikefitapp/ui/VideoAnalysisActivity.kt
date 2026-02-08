@@ -70,6 +70,7 @@ class VideoAnalysisActivity : AppCompatActivity() {
     private val pedalDetector = PedalCycleDetector()
     private val leftCycleAggregator = CycleAggregator(BodySide.LEFT)
     private val rightCycleAggregator = CycleAggregator(BodySide.RIGHT)
+    private val landmarkSmoother = pt.ineeve.bikefitapp.pose.OneEuroLandmarkSmoother()
     
     // Continuous crank angle tracking
     private val crankAngleTracker = CrankAngleTracker
@@ -456,7 +457,10 @@ class VideoAnalysisActivity : AppCompatActivity() {
         }
     }
     private suspend fun processFrame(bitmap: Bitmap, timestampMs: Long, frameNumber: Long) {
-         val poseResult = poseLandmarkerWrapper?.detectPoseForVideo(bitmap, timestampMs) ?: PoseResult.EMPTY
+         val rawPoseResult = poseLandmarkerWrapper?.detectPoseForVideo(bitmap, timestampMs) ?: PoseResult.EMPTY
+         
+         // Apply One Euro filtering for temporal smoothing
+         val poseResult = landmarkSmoother.smooth(rawPoseResult)
          
          if (poseResult.isValid) {
              // Calculate all angles for display

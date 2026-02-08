@@ -78,6 +78,7 @@ class CameraPreviewActivity : AppCompatActivity() {
     private val pedalDetector = PedalCycleDetector()
     private val leftCycleAggregator = CycleAggregator(BodySide.LEFT)
     private val rightCycleAggregator = CycleAggregator(BodySide.RIGHT)
+    private val landmarkSmoother = pt.ineeve.bikefitapp.pose.OneEuroLandmarkSmoother()
     
     // Data collection thresholds
     // Use 10 half-cycles (5 full revs) to ensure solid data and ignore mounting
@@ -333,8 +334,11 @@ class CameraPreviewActivity : AppCompatActivity() {
         }
         
         // Run pose detection on the frame
-        val poseResult = poseLandmarkerWrapper?.detectPoseForVideo(bitmap, timestampMs)
+        val rawPoseResult = poseLandmarkerWrapper?.detectPoseForVideo(bitmap, timestampMs)
             ?: PoseResult.EMPTY
+        
+        // Apply One Euro filtering for temporal smoothing
+        val poseResult = landmarkSmoother.smooth(rawPoseResult)
         
         // Calculate all angles for display
         val angleDisplays = calculateAllAngles(poseResult)

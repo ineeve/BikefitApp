@@ -382,6 +382,8 @@ class OneEuroLandmarkSmootherTest {
             PoseLandmarkIndex.RIGHT_KNEE,
             PoseLandmarkIndex.LEFT_ANKLE,
             PoseLandmarkIndex.RIGHT_ANKLE,
+            PoseLandmarkIndex.LEFT_HEEL,
+            PoseLandmarkIndex.RIGHT_HEEL,
             PoseLandmarkIndex.LEFT_FOOT_INDEX,
             PoseLandmarkIndex.RIGHT_FOOT_INDEX
         )

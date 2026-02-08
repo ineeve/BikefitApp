@@ -160,7 +160,7 @@ class OneEuroLandmarkSmoother(
     companion object {
         /**
          * Default target landmarks for bike fit analysis.
-         * Includes hip, knee, ankle, and toe landmarks on both sides.
+         * Includes hip, knee, ankle, heel, and toe landmarks on both sides.
          */
         val DEFAULT_TARGET_LANDMARKS: Set<Int> = setOf(
             PoseLandmarkIndex.LEFT_HIP,
@@ -169,6 +169,8 @@ class OneEuroLandmarkSmoother(
             PoseLandmarkIndex.RIGHT_KNEE,
             PoseLandmarkIndex.LEFT_ANKLE,
             PoseLandmarkIndex.RIGHT_ANKLE,
+            PoseLandmarkIndex.LEFT_HEEL,
+            PoseLandmarkIndex.RIGHT_HEEL,
             PoseLandmarkIndex.LEFT_FOOT_INDEX,  // Toe
             PoseLandmarkIndex.RIGHT_FOOT_INDEX  // Toe
         )
